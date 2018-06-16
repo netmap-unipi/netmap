@@ -11,7 +11,8 @@ int vale_vlan_use_count = 0;
 
 
 
-void *vv_malloc(size_t size)
+void *
+vv_malloc(size_t size)
 {
 
 	return malloc(size, M_VALE_VLAN, M_NOWAIT | M_ZERO);
@@ -19,7 +20,8 @@ void *vv_malloc(size_t size)
 
 
 
-void vv_free(void *addr)
+void
+vv_free(void *addr)
 {
 
 	free(addr, M_VALE_VLAN);
@@ -31,7 +33,8 @@ void vv_free(void *addr)
  * remove the global lock, or change locking related stuff, we need to pay
  * attention to data races on vale_vlan_use_count
  */
-void vv_try_module_get(void)
+void
+vv_try_module_get(void)
 {
 
 	++vale_vlan_use_count;
@@ -39,7 +42,8 @@ void vv_try_module_get(void)
 
 
 
-void vv_module_put(void)
+void
+vv_module_put(void)
 {
 
 	--vale_vlan_use_count;

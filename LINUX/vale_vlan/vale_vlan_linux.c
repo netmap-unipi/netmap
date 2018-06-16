@@ -7,7 +7,7 @@
 
 
 
-static struct mutex GLOBAL_LOCK;
+static struct mutex vale_vlan_global_lock;
 
 
 
@@ -55,18 +55,14 @@ vale_vlan_open(struct inode *inode, struct file *f)
 	struct vale_vlan_dev *dev;
 	int ret = 0;
 
-	mutex_lock(&GLOBAL_LOCK);
 	dev = vv_malloc(sizeof(struct vale_vlan_dev));
 	if (dev == NULL) {
-		D("Error while allocating memory for a 'struct vale_vlan_dev'");
-		ret = EFAULT;
-		goto l_unlock_open;
+		nm_prerr("Error while allocating memory "
+			"for a 'struct vale_vlan_dev'");
+		return -EFAULT;
 	}
 	vv_init_dev(dev);
 	f->private_data = dev;
-
-l_unlock_open:
-	mutex_unlock(&GLOBAL_LOCK);
 	return -ret;
 }
 
@@ -79,33 +75,27 @@ vale_vlan_write(struct file *f, const char __user *ubuf, size_t len,
 	struct vlan_conf_entry *entries;
 	ssize_t ret;
 
-	mutex_lock(&GLOBAL_LOCK);
-
 	entries = vv_malloc(len);
 	if (entries == NULL) {
-		D("Error while allocating memory for kernel side "
+		nm_prerr("Error while allocating memory for kernel side "
 			"'struct vlan_conf_entry' array");
-		ret = -EFAULT;
-		goto l_unlock_write;
+		return -EFAULT;
 	}
 	if (copy_from_user(entries, ubuf, len) != 0) {
-		D("Error while copying the 'struct vlan_conf_entry' "
+		nm_prerr("Error while copying the 'struct vlan_conf_entry' "
 			"to kernel memory");
-		ret = -EFAULT;
-		goto l_free_write;
+		return -EFAULT;
 	}
 
+	mutex_lock(&vale_vlan_global_lock);
 	ret = vv_write(f->private_data, entries, len);
 	if (ret == 0) {
 		ret = len;
 	} else {
 		ret = -ret;
 	}
-
-l_free_write:
 	vv_free(entries);
-l_unlock_write:
-	mutex_unlock(&GLOBAL_LOCK);
+	mutex_unlock(&vale_vlan_global_lock);
 	return ret;
 
 }
@@ -118,15 +108,14 @@ vale_vlan_read(struct file *f, char __user *buf, size_t len, loff_t *ppos)
 	ssize_t ret;
 	void *k_buf;
 
-	mutex_lock(&GLOBAL_LOCK);
 	k_buf = vv_malloc(len);
 	if (k_buf == NULL) {
-		D("Error while allocating memory for kernel side "
+		nm_prerr("Error while allocating memory for kernel side "
 			"'struct vlan_conf_entry' array");
-		ret = -EFAULT;
-		goto l_unlock_read;
+		return -EFAULT;
 	}
 
+	mutex_lock(&vale_vlan_global_lock);
 	ret = vv_read(f->private_data, k_buf, &len);
 	if (ret != 0) {
 		ret = -ret;
@@ -140,8 +129,7 @@ vale_vlan_read(struct file *f, char __user *buf, size_t len, loff_t *ppos)
 
 l_free_read:
 	vv_free(k_buf);
-l_unlock_read:
-	mutex_unlock(&GLOBAL_LOCK);
+	mutex_unlock(&vale_vlan_global_lock);
 	return ret;
 }
 
@@ -153,32 +141,28 @@ vale_vlan_ioctl(struct file *f, u_int cmd, u_long data)
 	struct vlanreq_header arg;
 	long ret = 0;
 
-	mutex_lock(&GLOBAL_LOCK);
-	if (_IOC_TYPE(cmd) != VALE_VLAN_IOC_MAGIC) {
-		ret = ENOTTY;
-		goto l_unlock_ioctl;
+	if (_IOC_TYPE(cmd) != VV_IOC_MAGIC) {
+		return -ENOTTY;
 	}
-	if (_IOC_NR(cmd) > VALE_VLAN_IOC_MAXNR) {
-		ret = ENOTTY;
-		goto l_unlock_ioctl;
+	if (_IOC_NR(cmd) > VV_IOC_MAXNR) {
+		return -ENOTTY;
 	}
 
 	switch (cmd) {
-	case VALE_VLAN_IOCCTRL:
+	case VV_IOCCTRL:
 		if (copy_from_user(&arg, (void *)data,
 			sizeof(struct vlanreq_header)) != 0) {
-			ret = EFAULT;
-			goto l_unlock_ioctl;
+			return -EFAULT;
 		}
+		mutex_lock(&vale_vlan_global_lock);
 		ret = vv_iocctrl(f->private_data, &arg);
+		mutex_unlock(&vale_vlan_global_lock);
 		break;
 
 	default:
-		ret = ENOTTY;
+		return -ENOTTY;
 	}
 
-l_unlock_ioctl:
-	mutex_unlock(&GLOBAL_LOCK);
 	return -ret;
 }
 
@@ -189,11 +173,11 @@ vale_vlan_init(void)
 {
 	int ret;
 
-	mutex_init(&GLOBAL_LOCK);
+	mutex_init(&vale_vlan_global_lock);
 	vv_init_module();
 	ret = misc_register(&vale_vlan_misc);
 	if (ret != 0) {
-		D("Failed to register vale_vlan misc device");
+		nm_prerr("Failed to register vale_vlan misc device");
 		return ret;
 	}
 	nm_prinf("vale_vlan: misc device successfully registered\n");
@@ -206,8 +190,8 @@ static void __exit
 vale_vlan_fini(void)
 {
 
-	mutex_destroy(&GLOBAL_LOCK);
-	destroy_dev(&vale_vlan_misc);
+	misc_deregister(&vale_vlan_misc);
+	mutex_destroy(&vale_vlan_global_lock);
 	nm_prinf("vale_vlan: misc device deregistered\n");
 }
 

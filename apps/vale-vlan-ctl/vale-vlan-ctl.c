@@ -9,7 +9,6 @@
 #include <net/if.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
 #include <sys/time.h>
@@ -22,7 +21,7 @@
 
 
 
-static bool
+static int
 str_to_uint16(const char *str, uint16_t *res)
 {
 	intmax_t val;
@@ -31,10 +30,10 @@ str_to_uint16(const char *str, uint16_t *res)
 
 	val = strtoimax(str, &end, 10);
 	if (errno == ERANGE || val < 0 || val > UINT16_MAX || end == str || *end != '\0') {
-		return false;
+		return -1;
 	}
 	*res = (uint16_t) val;
-	return true;
+	return 0;
 }
 
 
@@ -88,7 +87,7 @@ list_conf(int fd)
 
 	ret = read(fd, port_entries, sizeof(struct port) * MAX_LIST_ENTRIES);
 	if (ret < 0) {
-		perror("");
+		perror("read()");
 		exit(EXIT_FAILURE);
 	}
 	for (i = 0; i < ret / (int)sizeof(struct port); ++i) {
@@ -143,7 +142,7 @@ attach_vlan_port(int fd, char *port_and_vlan, int create)
 		fprintf(stderr, "You must specify a vlan id\n");
 		exit(EXIT_FAILURE);
 	}
-	if (!str_to_uint16(token, &vlan_id) || vlan_id > 4095) {
+	if (str_to_uint16(token, &vlan_id) == -1 || vlan_id > 4095) {
 		fprintf(stderr, "Invalid vlan id: %u\n", vlan_id);
 		exit(EXIT_FAILURE);
 	}
@@ -204,7 +203,6 @@ detach_trunk_port(int fd, int destroy)
 	action = destroy ? DETACH_AND_DESTROY_PORT : DETACH_PORT;
 	ret = vlan_write(fd, NULL, TRUNK_PORT, action, 0xFFF);
 	if (ret < 0) {
-		perror("");
 		exit(EXIT_FAILURE);
 	}
 }
@@ -306,7 +304,6 @@ usage(const char *file_name, FILE *std_stream)
 			"it (must have been created through -c)\n"
 		"\t-l 			list attached interfaces\n",
 		file_name);
-	exit(EXIT_FAILURE);
 }
 
 
@@ -319,6 +316,7 @@ main(int argc, char **argv)
 
 	if (argc == 1) {
 		usage(argv[0], stderr);
+		exit(EXIT_FAILURE);
 	}
 
 	fd = open(DEVICE_NAME, O_RDWR);
@@ -366,6 +364,8 @@ main(int argc, char **argv)
 			list_conf(fd);
 			break;
 		case 'h':	/* help */
+			usage(argv[0], stdout);
+			exit(0);
 		default:	/* error, unknown option or missing parameter */
 			usage(argv[0], stdout);
 			exit(EXIT_FAILURE);

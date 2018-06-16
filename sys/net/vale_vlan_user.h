@@ -9,27 +9,27 @@
 
 
 
-#define MAX_VLAN_ID		4096
-#define VALE_VLAN_API		1
-#define CONF_NAME_LENGTH	6
+#define VV_MAX_VLAN_ID		4096
+#define VV_API			1
+#define VV_CONF_NAME_LENGTH	6
 
 
 
-#define VALE_VLAN_IOC_MAGIC 'v'
-#define VALE_VLAN_IOC_MAXNR 0
-#define VALE_VLAN_IOCCTRL _IOWR(VALE_VLAN_IOC_MAGIC, 0, struct vlanreq_header)
+#define VV_IOC_MAGIC 'v'
+#define VV_IOC_MAXNR 0
+#define VV_IOCCTRL _IOWR(VV_IOC_MAGIC, 0, struct vlanreq_header)
 
 
 
 /* ioctl data parameter */
 struct vlanreq_header {
 	uint16_t 		vr_version;	/* API version */
-#define VLAN_REQ_CREATE_CONF	0x0001
-#define VLAN_REQ_SELECT_CONF	0x0002
-#define VLAN_REQ_DELETE_CONF	0x0003
+#define VV_REQ_CREATE_CONF	0x0001
+#define VV_REQ_SELECT_CONF	0x0002
+#define VV_REQ_DELETE_CONF	0x0003
 	uint16_t 		vr_req_type;
 	/* vlan configuration name */
-	char			vr_conf_name[CONF_NAME_LENGTH];
+	char			vr_conf_name[VV_CONF_NAME_LENGTH];
 	/* ptr to vlanreq_xyz struct, at the moment none exist */
 	uint64_t		vr_body;
 };

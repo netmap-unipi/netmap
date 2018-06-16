@@ -7,7 +7,7 @@
 
 
 
-/* This stuff is by netmap headers to compile */
+/* Import declarations needed by netmap */
 #if defined(__linux__)
 #include <bsd_glue.h>
 #elif defined(__FreeBSD__)
@@ -37,7 +37,7 @@
 #include <sys/endian.h>
 #include <sys/refcount.h>
 #endif /* FreeBSD */
-/* End of stuff required by netmap headers */
+/* End of declarations needed by netmap */
 
 #include <dev/vale_vlan/vv_os_interface.h>
 #include <net/vale_vlan_user.h>

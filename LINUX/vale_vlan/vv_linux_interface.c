@@ -7,7 +7,8 @@
 
 
 
-void *vv_malloc(size_t size)
+void *
+vv_malloc(size_t size)
 {
 	void *rv;
 
@@ -21,7 +22,8 @@ void *vv_malloc(size_t size)
 
 
 
-void vv_free(void *addr)
+void
+vv_free(void *addr)
 {
 
 	kfree(addr);
@@ -29,7 +31,8 @@ void vv_free(void *addr)
 
 
 
-void vv_try_module_get()
+void
+vv_try_module_get()
 {
 
 	try_module_get(THIS_MODULE);
@@ -37,7 +40,8 @@ void vv_try_module_get()
 
 
 
-void vv_module_put()
+void
+vv_module_put()
 {
 
 	module_put(THIS_MODULE);

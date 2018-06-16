@@ -34,7 +34,7 @@ static struct cdevsw vale_vlan_cdevsw = {
 };
 static struct cdev *vale_vlan_cdev;
 extern int vale_vlan_use_count;
-static struct sx GLOBAL_LOCK;
+static struct sx vale_vlan_global_lock;
 
 
 
@@ -54,12 +54,12 @@ vale_vlan_loader(__unused struct module *module, int event, __unused void *arg)
 			0600,
 			DEV_NAME);
 		if (error) {
-			D("Failed to register vale_vlan device");
+			nm_prerr("Failed to register vale_vlan device");
 			break;
 		}
 
 		vv_init_module();
-		sx_init(&GLOBAL_LOCK, "vale_vlan global lock");
+		sx_init(&vale_vlan_global_lock, "vale_vlan global lock");
 		nm_prinf("vale_vlan: device successfully registered\n");
 		break;
 
@@ -71,7 +71,7 @@ vale_vlan_loader(__unused struct module *module, int event, __unused void *arg)
 			break;
 		}
 		destroy_dev(vale_vlan_cdev);
-		sx_destroy(&GLOBAL_LOCK);
+		sx_destroy(&vale_vlan_global_lock);
 		break;
 
 	default:
@@ -102,20 +102,19 @@ vale_vlan_open(struct cdev *dev __unused, int oflags __unused,
 
 	vv_dev = vv_malloc(sizeof(struct vale_vlan_dev));
 	if (vv_dev == NULL) {
-		D("Error while allocating memory for a 'struct vale_vlan_dev'");
-		ret = EFAULT;
-		goto l_unlock_open;
+		nm_prerr("Error while allocating memory "
+			 "for a 'struct vale_vlan_dev'");
+		return EFAULT;
 	}
 
-	sx_xlock(&GLOBAL_LOCK);
+	sx_xlock(&vale_vlan_global_lock);
 	vv_init_dev(vv_dev);
 	ret = devfs_set_cdevpriv(vv_dev, vale_vlan_dtor);
 	if (ret != 0) {
 		vv_free(vv_dev);
 	}
-	sx_xunlock(&GLOBAL_LOCK);
+	sx_xunlock(&vale_vlan_global_lock);
 
-l_unlock_open:
 	return ret;
 }
 
@@ -142,33 +141,32 @@ vale_vlan_write(struct cdev *dev __unused, struct uio *uio, int ioflag __unused)
 	len = uio->uio_resid;
 	entries = vv_malloc(len);
 	if (entries == NULL) {
-		D("Error while allocating memory for kernel side"
+		nm_prerr("Error while allocating memory for kernel side"
 			"'struct vlan_conf_entry' array");
 		return EFAULT;
 	}
 
 	ret = uiomove(entries, len, uio);
 	if (ret != 0) {
-		D("Error %d while copying the 'struct vlan_conf_entry'"
+		nm_prerr("Error %d while copying the 'struct vlan_conf_entry'"
 			"to kernel memory", ret);
-		vv_free(entries);
-		return ret;
+		goto l_free_write;
 	}
 
-	sx_xlock(&GLOBAL_LOCK);
 	ret = devfs_get_cdevpriv((void **)&vv_dev);
 	if (ret != 0) {
-		D("Error %d while retrieving private"
+		nm_prerr("Error %d while retrieving private"
 			"struct vale_vlan_dev", ret);
-		goto l_unlock_write;
+		goto l_free_write;
 	}
 
 	CURVNET_SET(TD_TO_VNET(uio->uio_td));
+	sx_xlock(&vale_vlan_global_lock);
 	ret = vv_write(vv_dev, entries, len);
+	sx_xunlock(&vale_vlan_global_lock);
 	CURVNET_RESTORE();
 
-l_unlock_write:
-	sx_xunlock(&GLOBAL_LOCK);
+l_free_write:
 	vv_free(entries);
 	return ret;
 }
@@ -185,35 +183,31 @@ vale_vlan_read(struct cdev *dev __unused, struct uio *uio, int ioflag __unused)
 
 	buf = vv_malloc(len);
 	if (buf == NULL) {
-		D("Error while allocating memory for kernel side"
+		nm_prerr("Error while allocating memory for kernel side"
 			"'struct vlan_conf_entry' array");
 		return EFAULT;
 	}
 
-	sx_xlock(&GLOBAL_LOCK);
 	ret = devfs_get_cdevpriv((void **)&vv_dev);
 	if (ret != 0) {
-		D("Error %d while retrieving private"
+		nm_prerr("Error %d while retrieving private"
 			"struct vale_vlan_dev", ret);
-		goto l_unlock_read;
+		goto l_free_read;
 	}
 
+	sx_xlock(&vale_vlan_global_lock);
 	ret = vv_read(vv_dev, buf, &len);
+	sx_xunlock(&vale_vlan_global_lock);
 	if (ret != 0) {
-		goto l_unlock_read;
+		goto l_free_read;
 	}
 
-	sx_xunlock(&GLOBAL_LOCK);
 	ret = uiomove(buf, len, uio);
 	if (ret != 0) {
-		D("Error while writing results to userspace memory");
+		nm_prerr("Error while writing results to userspace memory");
 	}
 
-	vv_free(buf);
-	return ret;
-
-l_unlock_read:
-	sx_xunlock(&GLOBAL_LOCK);
+l_free_read:
 	vv_free(buf);
 	return ret;
 }
@@ -228,26 +222,24 @@ vale_vlan_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t data,
 	struct vale_vlan_dev *vv_dev;
 	int ret = 0;
 
-	sx_xlock(&GLOBAL_LOCK);
 	ret = devfs_get_cdevpriv((void **)&vv_dev);
 	if (ret != 0) {
-		D("Error %d while retrieving private"
+		nm_prerr("Error %d while retrieving private"
 			"struct vale_vlan_dev", ret);
-		ret = EFAULT;
-		goto l_unlock_ioctl;
+		return EFAULT;
 	}
 
 	switch (cmd) {
 	case VALE_VLAN_IOCCTRL:
+		sx_xlock(&vale_vlan_global_lock);
 		ret = vv_iocctrl(vv_dev, hdr);
+		sx_xunlock(&vale_vlan_global_lock);
 		break;
 
 	default:
 		ret = ENOTTY;
 	}
 
-l_unlock_ioctl:
-	sx_xunlock(&GLOBAL_LOCK);
 	return ret;
 }
 
