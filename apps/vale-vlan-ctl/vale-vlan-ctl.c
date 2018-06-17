@@ -143,7 +143,7 @@ attach_access_port(int fd, char *port_and_vlan, int create)
 		fprintf(stderr, "You must specify a vlan id\n");
 		exit(EXIT_FAILURE);
 	}
-	if (str_to_uint16(token, &vlan_id) == -1 || vlan_id > 4095) {
+	if (str_to_uint16(token, &vlan_id) == -1 || vlan_id >= 4095) {
 		fprintf(stderr, "Invalid vlan id: %u\n", vlan_id);
 		exit(EXIT_FAILURE);
 	}

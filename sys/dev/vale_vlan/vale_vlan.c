@@ -706,7 +706,7 @@ attach_access_port(struct vale_vlan_conf *conf, const char *port_name,
 
 	nm_prinf("Trying to attach port %s with vlan id: %d to conf %s\n",
 		port_name, vlan_id, conf->conf_name);
-	if (vlan_id == 0x000 || vlan_id == 0xFFF) {
+	if (vlan_id == 0xFFF) {
 		return EINVAL;
 	}
 	get_tagging_bdg_name(tagging_bdg_name, sizeof(tagging_bdg_name),
@@ -939,7 +939,7 @@ detach_access_port(struct vale_vlan_conf *conf, const char *port_name,
 	char ap_name[NETMAP_REQ_IFNAMSIZ];
 	int ret = 0;
 
-	if (vlan_id == 0x000 || vlan_id == 0xFFF) {
+	if (vlan_id == 0xFFF) {
 		return EINVAL;
 	}
 	get_vlan_bdg_name(vlan_bdg_name, sizeof(vlan_bdg_name), conf->conf_name,
@@ -1156,10 +1156,12 @@ vv_write(struct vale_vlan_dev *dev, struct vlan_conf_entry *entries, size_t len)
 	n_entries = len / sizeof(struct vlan_conf_entry);
 	dev->error_entry = -1;
 	for(i = 0, cur = entries; i < n_entries; ++i, ++cur) {
-		/* parameter checks */
+		/* Parameter checks, see vale_vlan_user.h for a description of
+		 * allowed vlan id, etc.
+		 */
 		if ((cur->port_type != TRUNK_PORT
 			&& cur->port_type != ACCESS_PORT)
-			|| cur->vlan_id >= 4095) {
+			|| cur->vlan_id > 4095) {
 			nm_prinf("vale_vlan: invalid parameter for "
 				"entry number %d\n", i);
 			ret = EINVAL;

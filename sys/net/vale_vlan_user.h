@@ -50,7 +50,8 @@ struct vlan_conf_entry {
 
 	/* 0x000 and 0xFFF are reserved
 	 * 0x000 means that the frame doensn't carry a vlan id
-	 * 0xFFF is reserved for implementation use
+	 * 0xFFF is reserved for implementation use, we currently use it to
+	 * double check trunk ports requests
 	 */
 	uint16_t 			vlan_id;
 };
