@@ -3,17 +3,17 @@
 
 
 
-#ifndef IF_NAMESIZE
-#define IF_NAMESIZE	16
+#ifndef IFNAMSIZ
+#define IFNAMSIZ 16
 #endif
+#define WITH_VALE
+#include <net/netmap.h>
 
 
 
 #define VV_MAX_VLAN_ID		4096
 #define VV_API			1
 #define VV_CONF_NAME_LENGTH	6
-
-
 
 #define VV_IOC_MAGIC 'v'
 #define VV_IOC_MAXNR 0
@@ -38,7 +38,7 @@ struct vlanreq_header {
 
 /* struct passed between user and kernel during write operations */
 struct vlan_conf_entry {
-	char 				port_name[IF_NAMESIZE];
+	char 				port_name[NETMAP_REQ_IFNAMSIZ];
 #define TRUNK_PORT			0x01
 #define VLAN_PORT 			0x02
 	uint8_t 			port_type;
@@ -59,8 +59,8 @@ struct vlan_conf_entry {
 
 /* struct passed between user and kernel during read operations */
 struct port {
-	char bdg_name[IF_NAMESIZE];
-	char port_name[IF_NAMESIZE];
+	char bdg_name[NETMAP_REQ_IFNAMSIZ];
+	char port_name[NETMAP_REQ_IFNAMSIZ];
 	uint16_t vlan_id;
 	/* port_type defines inside struct vlan_conf_entry */
 	uint8_t port_type;

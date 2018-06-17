@@ -324,7 +324,7 @@ static int
 vale_vlan_create_conf(const char *conf_name, uint16_t *conf_index)
 {
 	uint16_t free_conf = MAX_VLAN_CONFS;
-	char modified_bdg_name[IF_NAMESIZE];
+	char modified_bdg_name[NETMAP_REQ_IFNAMSIZ];
 	struct vale_vlan_conf *conf = NULL;
 	void *auth_token = NULL;
 	int ret = 0;
@@ -430,7 +430,7 @@ static int
 vale_vlan_delete_conf(const char *conf_name)
 {
 	uint16_t conf_index = MAX_VLAN_CONFS;
-	char modified_bdg_name[IF_NAMESIZE];
+	char modified_bdg_name[NETMAP_REQ_IFNAMSIZ];
 	struct vale_vlan_conf *conf = NULL;
 	uint16_t i;
 	int ret;
@@ -693,10 +693,10 @@ attach_vlan_port(struct vale_vlan_conf *conf, const char *port_name,
 {
 	void *vlan_bdg_auth_token = conf->vlan_bdg_auth_tokens[vlan_id];
 	uint32_t port_index = NM_BDG_NOPORT;
-	char modified_bdg_name[IF_NAMESIZE];
-	char vlan_bdg_name[IF_NAMESIZE];
+	char modified_bdg_name[NETMAP_REQ_IFNAMSIZ];
+	char vlan_bdg_name[NETMAP_REQ_IFNAMSIZ];
 	struct mod_access_port mod_ap;
-	char ap_name[IF_NAMESIZE];
+	char ap_name[NETMAP_REQ_IFNAMSIZ];
 	int ret = 0;
 
 	nm_prinf("Trying to attach port '%s' with vlan id: %d to conf '%s'",
@@ -797,7 +797,7 @@ attach_trunk_port(struct vale_vlan_conf *conf, const char *port_name,
 	uint16_t vlan_id)
 {
 	uint32_t port_index = NM_BDG_NOPORT;
-	char mod_bdg_name[IF_NAMESIZE];
+	char mod_bdg_name[NETMAP_REQ_IFNAMSIZ];
 	int ret = 0;
 
 	if (vlan_id != 0xFFF || conf->l_data.trunk_port != NM_BDG_NOPORT) {
@@ -825,7 +825,7 @@ static int
 action_attach(struct vale_vlan_conf *conf, const char *port_name,
 	uint8_t port_type, uint16_t vlan_id)
 {
-	char bdg_name[IF_NAMESIZE];
+	char bdg_name[NETMAP_REQ_IFNAMSIZ];
 	int ret = 0;
 
 	switch (port_type){
@@ -899,7 +899,7 @@ detach_trunk_port(struct vale_vlan_conf *conf, const char *port_name,
 	uint16_t vlan_id)
 {
 	uint32_t port_index = NM_BDG_NOPORT;
-	char bdg_name[IF_NAMESIZE];
+	char bdg_name[NETMAP_REQ_IFNAMSIZ];
 	int ret = 0;
 
 	if (vlan_id != 0xFFF) {
@@ -929,9 +929,9 @@ detach_vlan_port(struct vale_vlan_conf *conf, const char *port_name,
 	struct mod_access_port mod_access_port;
 	uint32_t port_index = NM_BDG_NOPORT;
 	void *vlan_bdg_auth_token = NULL;
-	char modified_bdg_name[IF_NAMESIZE];
-	char vlan_bdg_name[IF_NAMESIZE];
-	char ap_name[IF_NAMESIZE];
+	char modified_bdg_name[NETMAP_REQ_IFNAMSIZ];
+	char vlan_bdg_name[NETMAP_REQ_IFNAMSIZ];
+	char ap_name[NETMAP_REQ_IFNAMSIZ];
 	int ret = 0;
 
 	if (vlan_id == 0x000 || vlan_id == 0xFFF) {
@@ -1039,7 +1039,7 @@ search_trunk_port_of(struct vale_vlan_conf *conf, char *trunk_port_name)
 
 	vv_list_foreach(p_elem, &conf->port_list, list) {
 		if (p_elem->port_desc.port_type == TRUNK_PORT) {
-			snprintf(trunk_port_name, IF_NAMESIZE, "%s",
+			snprintf(trunk_port_name, NETMAP_REQ_IFNAMSIZ, "%s",
 				p_elem->port_desc.port_name);
 			return 0;
 		}

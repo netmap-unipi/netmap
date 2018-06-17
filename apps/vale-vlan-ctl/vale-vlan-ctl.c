@@ -47,7 +47,7 @@ vlan_ioctl(int fd, const char *conf_name, uint16_t req_type)
 	hdr.vr_req_type = req_type;
 	snprintf(hdr.vr_conf_name, sizeof(hdr.vr_conf_name), "%s", conf_name);
 
-	return ioctl(fd, VALE_VLAN_IOCCTRL, &hdr);
+	return ioctl(fd, VV_IOCCTRL, &hdr);
 }
 
 
@@ -111,7 +111,7 @@ static int
 valid_port_name(const char *conf_name)
 {
 
-	return (strlen(conf_name) + 1) <= IF_NAMESIZE;
+	return (strlen(conf_name) + 1) <= NETMAP_REQ_IFNAMSIZ;
 }
 
 
@@ -119,7 +119,7 @@ valid_port_name(const char *conf_name)
 static void
 attach_vlan_port(int fd, char *port_and_vlan, int create)
 {
-	char port_name[IF_NAMESIZE];
+	char port_name[NETMAP_REQ_IFNAMSIZ];
 	uint16_t vlan_id = 0;
 	uint8_t action;
 	ssize_t ret;
@@ -132,7 +132,8 @@ attach_vlan_port(int fd, char *port_and_vlan, int create)
 		exit(EXIT_FAILURE);
 	}
 	if (!valid_port_name(token)) {
-		fprintf(stderr, "Max port name length = %d\n", IF_NAMESIZE);
+		fprintf(stderr, "Max port name length = %d\n",
+			NETMAP_REQ_IFNAMSIZ);
 		exit(EXIT_FAILURE);
 	}
 	snprintf(port_name, sizeof(port_name), "%s", token);
@@ -180,7 +181,7 @@ attach_trunk_port(int fd, const char *port_name, int create)
 	ssize_t ret;
 
 	if (!valid_port_name(port_name)) {
-		fprintf(stderr, "Max port name length = %d\n", IF_NAMESIZE);
+		fprintf(stderr, "Max port name length = %d\n", NETMAP_REQ_IFNAMSIZ);
 		exit(EXIT_FAILURE);
 	}
 
@@ -213,7 +214,7 @@ static int
 valid_conf_name(const char *conf_name)
 {
 
-	return (strlen(conf_name) + 1) <= CONF_NAME_LENGTH;
+	return (strlen(conf_name) + 1) <= VV_CONF_NAME_LENGTH;
 }
 
 
@@ -225,11 +226,11 @@ create_conf(int fd, const char *conf_name)
 
 	if (!valid_conf_name(conf_name)) {
 		fprintf(stderr, "Max conf name length = %d\n",
-			CONF_NAME_LENGTH - 1);
+			VV_CONF_NAME_LENGTH - 1);
 		exit(EXIT_FAILURE);
 	}
 
-	ret = vlan_ioctl(fd, conf_name, VLAN_REQ_CREATE_CONF);
+	ret = vlan_ioctl(fd, conf_name, VV_REQ_CREATE_CONF);
 	if (ret < 0) {
 		perror(conf_name);
 		exit(EXIT_FAILURE);
@@ -245,11 +246,11 @@ delete_conf(int fd, const char *conf_name)
 
 	if (!valid_conf_name(conf_name)) {
 		fprintf(stderr, "Max conf name length = %d\n",
-			CONF_NAME_LENGTH - 1);
+			VV_CONF_NAME_LENGTH - 1);
 		exit(EXIT_FAILURE);
 	}
 
-	ret = vlan_ioctl(fd, conf_name, VLAN_REQ_DELETE_CONF);
+	ret = vlan_ioctl(fd, conf_name, VV_REQ_DELETE_CONF);
 	if (ret < 0) {
 		perror(conf_name);
 		exit(EXIT_FAILURE);
@@ -265,11 +266,11 @@ select_conf(int fd, const char *conf_name)
 
 	if (!valid_conf_name(conf_name)) {
 		fprintf(stderr, "Max conf name length = %d\n",
-			CONF_NAME_LENGTH - 1);
+			VV_CONF_NAME_LENGTH - 1);
 		exit(EXIT_FAILURE);
 	}
 
-	ret = vlan_ioctl(fd, conf_name, VLAN_REQ_SELECT_CONF);
+	ret = vlan_ioctl(fd, conf_name, VV_REQ_SELECT_CONF);
 	if (ret < 0) {
 		perror(conf_name);
 		exit(EXIT_FAILURE);
