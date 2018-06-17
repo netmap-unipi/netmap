@@ -40,7 +40,7 @@ struct vlanreq_header {
 struct vlan_conf_entry {
 	char 				port_name[NETMAP_REQ_IFNAMSIZ];
 #define TRUNK_PORT			0x01
-#define VLAN_PORT 			0x02
+#define ACCESS_PORT 			0x02
 	uint8_t 			port_type;
 #define CREATE_AND_ATTACH_PORT 		0x11
 #define ATTACH_PORT 			0x12

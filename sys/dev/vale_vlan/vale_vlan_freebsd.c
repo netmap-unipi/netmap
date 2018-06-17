@@ -54,7 +54,7 @@ vale_vlan_loader(__unused struct module *module, int event, __unused void *arg)
 			0600,
 			DEV_NAME);
 		if (error) {
-			nm_prerr("Failed to register vale_vlan device");
+			nm_prerr("Failed to register vale_vlan device\n");
 			break;
 		}
 
@@ -103,7 +103,7 @@ vale_vlan_open(struct cdev *dev __unused, int oflags __unused,
 	vv_dev = vv_malloc(sizeof(struct vale_vlan_dev));
 	if (vv_dev == NULL) {
 		nm_prerr("Error while allocating memory "
-			 "for a 'struct vale_vlan_dev'");
+			 "for a struct vale_vlan_dev\n");
 		return EFAULT;
 	}
 
@@ -142,21 +142,21 @@ vale_vlan_write(struct cdev *dev __unused, struct uio *uio, int ioflag __unused)
 	entries = vv_malloc(len);
 	if (entries == NULL) {
 		nm_prerr("Error while allocating memory for kernel side"
-			"'struct vlan_conf_entry' array");
+			"struct vlan_conf_entry array\n");
 		return EFAULT;
 	}
 
 	ret = uiomove(entries, len, uio);
 	if (ret != 0) {
-		nm_prerr("Error %d while copying the 'struct vlan_conf_entry'"
-			"to kernel memory", ret);
+		nm_prerr("Error %d while copying the struct vlan_conf_entry"
+			"to kernel memory\n", ret);
 		goto l_free_write;
 	}
 
 	ret = devfs_get_cdevpriv((void **)&vv_dev);
 	if (ret != 0) {
 		nm_prerr("Error %d while retrieving private"
-			"struct vale_vlan_dev", ret);
+			"struct vale_vlan_dev\n", ret);
 		goto l_free_write;
 	}
 
@@ -184,14 +184,14 @@ vale_vlan_read(struct cdev *dev __unused, struct uio *uio, int ioflag __unused)
 	buf = vv_malloc(len);
 	if (buf == NULL) {
 		nm_prerr("Error while allocating memory for kernel side"
-			"'struct vlan_conf_entry' array");
+			"struct vlan_conf_entry array\n");
 		return EFAULT;
 	}
 
 	ret = devfs_get_cdevpriv((void **)&vv_dev);
 	if (ret != 0) {
 		nm_prerr("Error %d while retrieving private"
-			"struct vale_vlan_dev", ret);
+			"struct vale_vlan_dev\n", ret);
 		goto l_free_read;
 	}
 
@@ -204,7 +204,7 @@ vale_vlan_read(struct cdev *dev __unused, struct uio *uio, int ioflag __unused)
 
 	ret = uiomove(buf, len, uio);
 	if (ret != 0) {
-		nm_prerr("Error while writing results to userspace memory");
+		nm_prerr("Error while writing results to userspace memory\n");
 	}
 
 l_free_read:
@@ -225,7 +225,7 @@ vale_vlan_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t data,
 	ret = devfs_get_cdevpriv((void **)&vv_dev);
 	if (ret != 0) {
 		nm_prerr("Error %d while retrieving private"
-			"struct vale_vlan_dev", ret);
+			"struct vale_vlan_dev\n", ret);
 		return EFAULT;
 	}
 

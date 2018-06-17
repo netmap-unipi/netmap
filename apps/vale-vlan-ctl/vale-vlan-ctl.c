@@ -117,7 +117,7 @@ valid_port_name(const char *conf_name)
 
 
 static void
-attach_vlan_port(int fd, char *port_and_vlan, int create)
+attach_access_port(int fd, char *port_and_vlan, int create)
 {
 	char port_name[NETMAP_REQ_IFNAMSIZ];
 	uint16_t vlan_id = 0;
@@ -149,7 +149,7 @@ attach_vlan_port(int fd, char *port_and_vlan, int create)
 	}
 
 	action = create ? CREATE_AND_ATTACH_PORT : ATTACH_PORT;
-	ret = vlan_write(fd, port_name, VLAN_PORT, action, vlan_id);
+	ret = vlan_write(fd, port_name, ACCESS_PORT, action, vlan_id);
 	if (ret < 0) {
 		perror(port_name);
 		exit(EXIT_FAILURE);
@@ -159,13 +159,13 @@ attach_vlan_port(int fd, char *port_and_vlan, int create)
 
 
 static void
-detach_vlan_port(int fd, const char *port_name, int destroy)
+detach_access_port(int fd, const char *port_name, int destroy)
 {
 	uint8_t action;
 	ssize_t ret;
 
 	action = destroy ? DETACH_AND_DESTROY_PORT : DETACH_PORT;
-	ret = vlan_write(fd, port_name, VLAN_PORT, action, 0xFFF);
+	ret = vlan_write(fd, port_name, ACCESS_PORT, action, 0xFFF);
 	if (ret < 0) {
 		perror(port_name);
 		exit(EXIT_FAILURE);
@@ -341,16 +341,16 @@ main(int argc, char **argv)
 			detach_trunk_port(fd, 1 /* destroy */);
 			break;
 		case 'a':	/* attach vlan port */
-			attach_vlan_port(fd, optarg, 0 /* don't create */);
+			attach_access_port(fd, optarg, 0 /* don't create */);
 			break;
 		case 'A':	/* detach vlan port */
-			detach_vlan_port(fd, optarg, 0 /* don't destroy */);
+			detach_access_port(fd, optarg, 0 /* don't destroy */);
 			break;
 		case 'c':	/* create and attach vlan port */
-			attach_vlan_port(fd, optarg, 1 /* create */);
+			attach_access_port(fd, optarg, 1 /* create */);
 			break;
 		case 'C':	/* detach and destroy vlan port */
-			detach_vlan_port(fd, optarg, 1 /* destroy */);
+			detach_access_port(fd, optarg, 1 /* destroy */);
 			break;
 		case 'n':	/* create new configuration */
 			create_conf(fd, optarg);

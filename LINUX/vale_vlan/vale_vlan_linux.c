@@ -58,7 +58,7 @@ vale_vlan_open(struct inode *inode, struct file *f)
 	dev = vv_malloc(sizeof(struct vale_vlan_dev));
 	if (dev == NULL) {
 		nm_prerr("Error while allocating memory "
-			"for a 'struct vale_vlan_dev'");
+			"for a struct vale_vlan_dev\n");
 		return -EFAULT;
 	}
 	vv_init_dev(dev);
@@ -78,12 +78,12 @@ vale_vlan_write(struct file *f, const char __user *ubuf, size_t len,
 	entries = vv_malloc(len);
 	if (entries == NULL) {
 		nm_prerr("Error while allocating memory for kernel side "
-			"'struct vlan_conf_entry' array");
+			"struct vlan_conf_entry array\n");
 		return -EFAULT;
 	}
 	if (copy_from_user(entries, ubuf, len) != 0) {
-		nm_prerr("Error while copying the 'struct vlan_conf_entry' "
-			"to kernel memory");
+		nm_prerr("Error while copying the struct vlan_conf_entry "
+			"to kernel memory\n");
 		return -EFAULT;
 	}
 
@@ -111,7 +111,7 @@ vale_vlan_read(struct file *f, char __user *buf, size_t len, loff_t *ppos)
 	k_buf = vv_malloc(len);
 	if (k_buf == NULL) {
 		nm_prerr("Error while allocating memory for kernel side "
-			"'struct vlan_conf_entry' array");
+			"struct vlan_conf_entry array\n");
 		return -EFAULT;
 	}
 
@@ -177,7 +177,7 @@ vale_vlan_init(void)
 	vv_init_module();
 	ret = misc_register(&vale_vlan_misc);
 	if (ret != 0) {
-		nm_prerr("Failed to register vale_vlan misc device");
+		nm_prerr("Failed to register vale_vlan misc device\n");
 		return ret;
 	}
 	nm_prinf("vale_vlan: misc device successfully registered\n");

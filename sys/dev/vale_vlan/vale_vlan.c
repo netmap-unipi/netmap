@@ -26,12 +26,12 @@ tag_frame(struct nm_bdg_fwd *ft, struct netmap_vp_adapter *vpna,
 
 	buf_size = NETMAP_BUF_SIZE((struct netmap_adapter *)vpna);
 	if (ft_end->ft_len + TAG_LENGTH > buf_size) {
-		nm_prinf("Not enough space for the tag in the last fragment");
+		nm_prinf("Not enough space for the tag in the last fragment\n");
 		return EINVAL;
 	}
 	if (ft->ft_offset + TAG_END > ft->ft_len) {
 		nm_prinf("Header split between two nm_bdg_fwd,"
-			"at the moment not supported");
+			"at the moment not supported\n");
 		return EINVAL;
 	}
 
@@ -57,7 +57,7 @@ tag_frame(struct nm_bdg_fwd *ft, struct netmap_vp_adapter *vpna,
 
 		start_addr = buf + ft_cur->ft_offset;
 		dest_addr = start_addr + TAG_LENGTH;
-		/* we alredy added TAG_LENGTH to ft_end->ft_len, therefore the
+		/* we already added TAG_LENGTH to ft_end->ft_len, therefore the
 		 * last fragment case is covered without any additional check
 		 */
 		n_bytes = buf_len - TAG_LENGTH - ft_cur->ft_offset;
@@ -88,26 +88,26 @@ untag_frame(struct nm_bdg_fwd *ft, struct netmap_vp_adapter *vpna,
 	int n_bytes = 0;
 
 	if (ft->ft_offset + TAG_END > ft->ft_len) {
-		/* header split between two nm_bdg_fwd,
-		 * at the moment not supported
-		 */
+		/* VLAN header not contained in the first fragment */
 		return EINVAL;
 	}
 	if (ft_end->ft_len < TAG_LENGTH) {
-		/* the last fragment empties and we need to update fragmentation
-		 * flags etc. at the moment we don't handle this case
+		/* During the untagging we strip TAG_LENGTH bytes from the
+		 * frame, therefore in this case last fragment would become
+		 * empty and we would need to update fragmentation flags etc.
+		 * At the moment we don't handle this case.
 		 */
 		return EINVAL;
 	}
 
 	/* first we retrieve the informations we need */
-	buf = ft->ft_buf;
-	be_tpid = *(uint16_t *)(buf + ft->ft_offset + TAG_PID);
-	if (be16toh(be_tpid) != 0x8100) {
-		nm_prinf("Not an IEEE802.Q frame");
+	buf = ft->ft_buf + ft->ft_offset;
+	be_tpid = *(uint16_t *)(buf + TAG_PID);
+	if (be_tpid != htobe16(0x8100)) {
+		nm_prinf("Not an IEEE802.Q frame\n");
 		return EINVAL;
 	}
-	be_tci = *(uint16_t *)(buf + ft->ft_offset + TAG_CI);
+	be_tci = *(uint16_t *)(buf + TAG_CI);
 	*vlan_id = be16toh(be_tci) & 0x0FFF;
 
 	/* then we remove the tag */
@@ -145,16 +145,21 @@ untag_frame(struct nm_bdg_fwd *ft, struct netmap_vp_adapter *vpna,
 }
 
 
-
+/* Core data structure used by tagging bridges to forward frames.
+ *
+ * trunk port: index of the trunk port inside the tagging VALE bridge
+ * port_to_vlan_id: translates a port index to its corresponding vlan id
+ * vlan_id_to_port: translates a vlan id to its corresponding port index
+ */
 struct vlan_lookup_data {
 	uint32_t trunk_port;
-	uint16_t port_to_vlan[NM_BDG_MAXPORTS];
-	uint32_t vlan_to_port[VV_MAX_VLAN_ID];
+	uint16_t port_to_vlan_id[NM_BDG_MAXPORTS];
+	uint32_t vlan_id_to_port[VV_MAX_VLAN_ID];
 };
 
 
 
-/* must be called with GLOBAL_LOCK */
+/* must be called with vv_global_lock */
 static void
 initialize_lookup_data(struct vlan_lookup_data *l_data)
 {
@@ -162,10 +167,10 @@ initialize_lookup_data(struct vlan_lookup_data *l_data)
 
 	l_data->trunk_port = NM_BDG_NOPORT;
 	for (i = 0; i < NM_BDG_MAXPORTS; ++i) {
-		l_data->port_to_vlan[i] = 0x000;
+		l_data->port_to_vlan_id[i] = 0x000;
 	}
 	for (i = 0; i < VV_MAX_VLAN_ID; ++i) {
-		l_data->vlan_to_port[i] = NM_BDG_NOPORT;
+		l_data->vlan_id_to_port[i] = NM_BDG_NOPORT;
 	}
 }
 
@@ -178,7 +183,7 @@ struct port_elem {
 
 
 
-/* for each vlan conf there is only one 'modified bridge',
+/* for each vlan conf there is only one tagging bridge,
  * therefore we can store a lookup data structure directly inside
  * the struct which describes the configuration
  */
@@ -217,11 +222,11 @@ get_ap_name(char *port_name, size_t len, const char *conf_name,
 
 
 
-/* there is one 'modified bridge' per configuration, therefore we
+/* there is one tagging bridge per configuration, therefore we
  * only need the configuration name to create a unique bridge name
  */
 static inline void
-get_modified_bdg_name(char *bridge_name, size_t len, const char *conf_name)
+get_tagging_bdg_name(char *bridge_name, size_t len, const char *conf_name)
 {
 
 	snprintf(bridge_name, len, "valeV%sTP:", conf_name);
@@ -256,7 +261,7 @@ vlan_lookup(struct nm_bdg_fwd *ft, uint8_t *dst_ring,
 
 	bdg_name = netmap_bdg_name(vpna);
 
-	if (ft->ft_flags & NS_INDIRECT) {
+	if (unlikely(ft->ft_flags & NS_INDIRECT)) {
 		/* we do not handle userspace indirect buffers */
 		return NM_BDG_NOPORT;
 	}
@@ -267,9 +272,9 @@ vlan_lookup(struct nm_bdg_fwd *ft, uint8_t *dst_ring,
 			return NM_BDG_NOPORT;
 		}
 
-		dest_port = l_data->vlan_to_port[vlan_id];
+		dest_port = l_data->vlan_id_to_port[vlan_id];
 	} else {
-		vlan_id = l_data->port_to_vlan[bdg_port];
+		vlan_id = l_data->port_to_vlan_id[bdg_port];
 		ret = tag_frame(ft, vpna, vlan_id);
 		if (ret) {
 			return NM_BDG_NOPORT;
@@ -291,7 +296,7 @@ static inline int
 modify_bdg(struct vale_vlan_conf *conf, const char *bdg_name)
 {
 
-	nm_prinf("Trying to modify bdg '%s' for conf '%s'",
+	nm_prinf("Trying to modify bdg %s for conf %s\n",
 		bdg_name, conf->conf_name);
 	return netmap_bdg_regops(bdg_name, &vlan_ops, &conf->l_data,
 		conf->mod_bdg_auth_token);
@@ -303,7 +308,7 @@ static inline int
 reset_bdg(struct vale_vlan_conf *conf, const char *bdg_name)
 {
 
-	nm_prinf("Trying to reset bdg '%s' for conf '%s'",
+	nm_prinf("Trying to reset bdg %s for conf %s\n",
 		bdg_name, conf->conf_name);
 	return netmap_bdg_regops(bdg_name, NULL, NULL,
 		conf->mod_bdg_auth_token);
@@ -315,7 +320,7 @@ reset_bdg(struct vale_vlan_conf *conf, const char *bdg_name)
 /* used to access currently active vlan confs */
 static uint16_t vlan_conf_index[MAX_VLAN_CONFS];
 static struct vale_vlan_conf vlan_confs[MAX_VLAN_CONFS];
-static uint16_t active_vlan_conf = 0;
+static uint16_t num_active_vlan_confs = 0;
 
 
 
@@ -324,13 +329,13 @@ static int
 vale_vlan_create_conf(const char *conf_name, uint16_t *conf_index)
 {
 	uint16_t free_conf = MAX_VLAN_CONFS;
-	char modified_bdg_name[NETMAP_REQ_IFNAMSIZ];
+	char tagging_bdg_name[NETMAP_REQ_IFNAMSIZ];
 	struct vale_vlan_conf *conf = NULL;
 	void *auth_token = NULL;
 	int ret = 0;
 	int i;
 
-	if (active_vlan_conf == MAX_VLAN_CONFS) {
+	if (num_active_vlan_confs == MAX_VLAN_CONFS) {
 		nm_prinf("vale_vlan: maximum number of"
 			"configurations reached\n");
 		return ENOMEM;
@@ -341,7 +346,7 @@ vale_vlan_create_conf(const char *conf_name, uint16_t *conf_index)
 			    conf_name,
 			    sizeof(vlan_confs[i].conf_name)) == 0) {
 			nm_prinf("vale_vlan: a configuration named"
-				"'%s' alredy exists\n", conf_name);
+				"%s alredy exists\n", conf_name);
 			return EEXIST;
 		} else if (vlan_confs[i].conf_name[0] == '\0') {
 			/* a free slot is represented by an empty conf_name */
@@ -350,16 +355,16 @@ vale_vlan_create_conf(const char *conf_name, uint16_t *conf_index)
 	}
 
 	/* create bridge in exclusive mode */
-	get_modified_bdg_name(modified_bdg_name, sizeof(modified_bdg_name),
+	get_tagging_bdg_name(tagging_bdg_name, sizeof(tagging_bdg_name),
 		conf_name);
-	auth_token = netmap_bdg_create(modified_bdg_name, &ret);
+	auth_token = netmap_bdg_create(tagging_bdg_name, &ret);
 	if (auth_token == NULL || ret != 0) {
-		nm_prerr("Error %d during bridge '%s' creation",
-			ret, modified_bdg_name);
+		nm_prerr("Error %d during bridge %s creation\n",
+			ret, tagging_bdg_name);
 		return ret;
 	}
 
-	vlan_conf_index[active_vlan_conf++] = free_conf;
+	vlan_conf_index[num_active_vlan_confs++] = free_conf;
 	conf = &vlan_confs[free_conf];
 	initialize_conf(conf);
 	strncpy(conf->conf_name, conf_name, sizeof(conf->conf_name));
@@ -368,27 +373,27 @@ vale_vlan_create_conf(const char *conf_name, uint16_t *conf_index)
 	conf->mod_bdg_auth_token = auth_token;
 	*conf_index = free_conf;
 
-	ret = modify_bdg(conf, modified_bdg_name);
+	ret = modify_bdg(conf, tagging_bdg_name);
 	if (ret) {
 		int ret2;
-		nm_prerr("Error %d during bridge '%s' regops()",
-			ret, modified_bdg_name);
-		ret2 = netmap_bdg_destroy(modified_bdg_name,
+		nm_prerr("Error %d during bridge %s regops()\n",
+			ret, tagging_bdg_name);
+		ret2 = netmap_bdg_destroy(tagging_bdg_name,
 			conf->mod_bdg_auth_token);
 		if (ret2) {
 			/* cannot happen */
-			nm_prerr("Error %d during bridge '%s' destroy(), "
-				 "this should never happen",
-				ret2, modified_bdg_name);
+			nm_prerr("Error %d during bridge %s destroy(), "
+				 "this should never happen\n",
+				ret2, tagging_bdg_name);
 		}
 		initialize_conf(conf);
-		--active_vlan_conf;
+		--num_active_vlan_confs;
 		return ret;
 	}
 	vv_try_module_get();
 
 	nm_prinf("vale_vlan: successfully created "
-		 "configuration '%s'\n", conf_name);
+		 "configuration %s\n", conf_name);
 	return 0;
 }
 
@@ -396,46 +401,46 @@ vale_vlan_create_conf(const char *conf_name, uint16_t *conf_index)
 
 /* Fails if the conf doesn't exist
  *
- * must be called with GLOBAL_LOCK
+ * must be called with vv_global_lock
  */
 static int
 vale_vlan_select_conf(const char *conf_name, uint16_t *conf_index)
 {
 	int i;
 
-	for (i = 0; i < active_vlan_conf; ++i) {
+	for (i = 0; i < num_active_vlan_confs; ++i) {
 		int index = vlan_conf_index[i];
 		if (strncmp(vlan_confs[index].conf_name,
 			    conf_name,
 			    sizeof(vlan_confs[index].conf_name)) == 0) {
 			*conf_index = index;
 			nm_prinf("vale_vlan: successfully selected "
-				"configuration '%s'\n", conf_name);
+				"configuration %s\n", conf_name);
 			return 0;
 		}
 	}
 
-	nm_prinf("vale_vlan: a configuration named '%s' doesn't exist\n",
+	nm_prinf("vale_vlan: a configuration named %s doesn't exist\n",
 		conf_name);
 	return ENXIO;
 }
 
 
 
-/* Fails if the conf doesn't exist or the modified bridge isn't empty
+/* Fails if the conf doesn't exist or the tagging bridge isn't empty
  *
- * must be called with GLOBAL_LOCK
+ * must be called with vv_global_lock
  */
 static int
 vale_vlan_delete_conf(const char *conf_name)
 {
 	uint16_t conf_index = MAX_VLAN_CONFS;
-	char modified_bdg_name[NETMAP_REQ_IFNAMSIZ];
+	char tagging_bdg_name[NETMAP_REQ_IFNAMSIZ];
 	struct vale_vlan_conf *conf = NULL;
 	uint16_t i;
 	int ret;
 
-	for (i = 0; i < active_vlan_conf; ++i) {
+	for (i = 0; i < num_active_vlan_confs; ++i) {
 		int index = vlan_conf_index[i];
 		if (strncmp(vlan_confs[index].conf_name,
 			    conf_name,
@@ -446,7 +451,7 @@ vale_vlan_delete_conf(const char *conf_name)
 		}
 	}
 
-	if (!conf || i == active_vlan_conf) {
+	if (!conf || i == num_active_vlan_confs) {
 		/* conf doesn't exist */
 		return ENXIO;
 	}
@@ -458,19 +463,19 @@ vale_vlan_delete_conf(const char *conf_name)
 		}
 	}
 
-	get_modified_bdg_name(modified_bdg_name, sizeof(modified_bdg_name),
+	get_tagging_bdg_name(tagging_bdg_name, sizeof(tagging_bdg_name),
 		conf_name);
-	ret = netmap_bdg_destroy(modified_bdg_name,
+	ret = netmap_bdg_destroy(tagging_bdg_name,
 		conf->mod_bdg_auth_token);
 	if (ret) {
 		/* cannot happen (?) */
-		nm_prerr("Error %d during bridge '%s' destroy(), "
-			 "this should not happend", ret, modified_bdg_name);
+		nm_prerr("Error %d during bridge %s destroy(), "
+			 "this should not happend\n", ret, tagging_bdg_name);
 		return ret;
 	}
 
 	conf->conf_name[0] = '\0';	/* marks conf slot as free */
-	vlan_conf_index[conf_index] = vlan_conf_index[--active_vlan_conf];
+	vlan_conf_index[conf_index] = vlan_conf_index[--num_active_vlan_confs];
 	vv_module_put();
 	return 0;
 }
@@ -479,10 +484,10 @@ vale_vlan_delete_conf(const char *conf_name)
 /* returns 0 if conf_index isn't a possible index or if
  * the conf entry isn't in use
  *
- * must be called with GLOBAL_LOCK
+ * must be called with vv_global_lock
  */
 static int
-does_conf_exist(int conf_index)
+conf_exists(int conf_index)
 {
 
 	if (conf_index < 0 || conf_index >= MAX_VLAN_CONFS) {
@@ -525,8 +530,8 @@ modify_access_port(void *private_data, void *callback_data, int *error)
 	struct vlan_lookup_data *l_data = private_data;
 	struct mod_access_port *mod = callback_data;
 
-	l_data->port_to_vlan[mod->old_port_index] = mod->new_vlan_id;
-	l_data->vlan_to_port[mod->old_vlan_id] = mod->new_port_index;
+	l_data->port_to_vlan_id[mod->old_port_index] = mod->new_vlan_id;
+	l_data->vlan_id_to_port[mod->old_vlan_id] = mod->new_port_index;
 	*error = 0;
 	return l_data;
 }
@@ -540,7 +545,7 @@ create_vale_port(const char* name)
 	struct nmreq_header hdr;
 	int ret = 0;
 
-	nm_prinf("Trying to create port '%s'", name);
+	nm_prinf("Trying to create port %s\n", name);
 
 	bzero(&hdr, sizeof(hdr));
 	hdr.nr_version = NM_API_VERSION;
@@ -549,13 +554,13 @@ create_vale_port(const char* name)
 	hdr.nr_name[sizeof(hdr.nr_name)-1] = '\0';
 
 	bzero(&newif, sizeof(newif));
-	hdr.nr_body = (uint64_t)&newif;
+	hdr.nr_body = (uintptr_t)&newif;
 
 	ret = nm_vi_create(&hdr);
 	if (ret == 0) {
 		vv_try_module_get();
 	} else {
-		nm_prerr("Error %d during port '%s' nm_vi_create()", ret, name);
+		nm_prerr("Error %d during port %s nm_vi_create()\n", ret, name);
 	}
 
 	return ret;
@@ -568,12 +573,12 @@ destroy_vale_port(const char* name)
 {
 	int ret;
 
-	nm_prinf("Trying to destroy port '%s'", name);
+	nm_prinf("Trying to destroy port %s\n", name);
 	ret = nm_vi_destroy(name);
 	if (ret == 0) {
 		vv_module_put();
 	} else {
-		nm_prerr("Error %d during port '%s' nm_vi_destroy()",
+		nm_prerr("Error %d during port %s nm_vi_destroy()\n",
 			ret, name);
 	}
 	return ret;
@@ -627,7 +632,7 @@ detach_port_list(struct vale_vlan_conf *conf, const char *port_name)
 
 
 static int detach_trunk_port(struct vale_vlan_conf *, const char *, uint16_t);
-static int detach_vlan_port(struct vale_vlan_conf *, const char *, uint16_t);
+static int detach_access_port(struct vale_vlan_conf *, const char *, uint16_t);
 
 
 
@@ -639,14 +644,14 @@ attach_port(const char *bdg_name, const char *port_name, void *auth_token,
 	struct nmreq_header hdr;
 	int ret = 0;
 
-	nm_prinf("Trying to attach port '%s%s'", bdg_name, port_name);
+	nm_prinf("Trying to attach port %s%s\n", bdg_name, port_name);
 	bzero(&nmr_att, sizeof(nmr_att));
 	nmr_att.reg.nr_mode = NR_REG_ALL_NIC;
 
 	bzero(&hdr, sizeof(hdr));
 	hdr.nr_version = NM_API_VERSION;
 	hdr.nr_reqtype = NETMAP_REQ_VALE_ATTACH;
-	hdr.nr_body = (uint64_t)&nmr_att;
+	hdr.nr_body = (uintptr_t)&nmr_att;
 	snprintf(hdr.nr_name, sizeof(hdr.nr_name), "%s%s", bdg_name, port_name);
 
 	ret = nm_bdg_ctl_attach(&hdr, auth_token);
@@ -668,13 +673,13 @@ detach_port(const char *bdg_name, const char *port_name, void *auth_token,
 	struct nmreq_header hdr;
 	int ret = 0;
 
-	nm_prinf("Trying to detach port %s%s", bdg_name, port_name);
+	nm_prinf("Trying to detach port %s%s\n", bdg_name, port_name);
 	bzero(&nmr_det, sizeof(nmr_det));
 
 	bzero(&hdr, sizeof(hdr));
 	hdr.nr_version = NM_API_VERSION;
 	hdr.nr_reqtype = NETMAP_REQ_VALE_DETACH;
-	hdr.nr_body = (uint64_t)&nmr_det;
+	hdr.nr_body = (uintptr_t)&nmr_det;
 	snprintf(hdr.nr_name, sizeof(hdr.nr_name), "%s%s", bdg_name, port_name);
 
 	ret = nm_bdg_ctl_detach(&hdr, auth_token);
@@ -688,23 +693,23 @@ detach_port(const char *bdg_name, const char *port_name, void *auth_token,
 
 
 static int
-attach_vlan_port(struct vale_vlan_conf *conf, const char *port_name,
+attach_access_port(struct vale_vlan_conf *conf, const char *port_name,
 	uint16_t vlan_id)
 {
 	void *vlan_bdg_auth_token = conf->vlan_bdg_auth_tokens[vlan_id];
 	uint32_t port_index = NM_BDG_NOPORT;
-	char modified_bdg_name[NETMAP_REQ_IFNAMSIZ];
+	char tagging_bdg_name[NETMAP_REQ_IFNAMSIZ];
 	char vlan_bdg_name[NETMAP_REQ_IFNAMSIZ];
 	struct mod_access_port mod_ap;
 	char ap_name[NETMAP_REQ_IFNAMSIZ];
 	int ret = 0;
 
-	nm_prinf("Trying to attach port '%s' with vlan id: %d to conf '%s'",
+	nm_prinf("Trying to attach port %s with vlan id: %d to conf %s\n",
 		port_name, vlan_id, conf->conf_name);
 	if (vlan_id == 0x000 || vlan_id == 0xFFF) {
 		return EINVAL;
 	}
-	get_modified_bdg_name(modified_bdg_name, sizeof(modified_bdg_name),
+	get_tagging_bdg_name(tagging_bdg_name, sizeof(tagging_bdg_name),
 		conf->conf_name);
 	get_vlan_bdg_name(vlan_bdg_name, sizeof(vlan_bdg_name), conf->conf_name,
 		vlan_id);
@@ -727,18 +732,18 @@ attach_vlan_port(struct vale_vlan_conf *conf, const char *port_name,
 
 	if (++conf->number_of_ports[vlan_id] != 1) {
 		/* an access port has alredy been created and attached to the
-		 * modified bridge
+		 * tagging bridge
 		 */
 		return ret;
 	}
 
 	/* we need to create an access port and attach it
-	 * to the modified bridge
+	 * to the tagging bridge
 	 */
 	get_ap_name(ap_name, sizeof(ap_name), conf->conf_name, vlan_id);
 	ret = create_vale_port(ap_name);
 	if (ret) {
-		goto l_detach_vlan_port;
+		goto l_detach_access_port;
 	}
 
 	ret = attach_port(vlan_bdg_name, ap_name, vlan_bdg_auth_token,
@@ -747,19 +752,19 @@ attach_vlan_port(struct vale_vlan_conf *conf, const char *port_name,
 		goto l_destroy_access_port;
 	}
 
-	ret = attach_port(modified_bdg_name, ap_name,
+	ret = attach_port(tagging_bdg_name, ap_name,
 		conf->mod_bdg_auth_token, &port_index);
 	if (ret) {
 		goto l_detach_access_port_vlan_bdg;
 	}
 
-	/* this can fail only if bdg_name doesn't exist or hasn't been modified
+	/* this can fail only if bdg_name doesn't exist or hasn't been tagging
 	 * by us, and in either case we would have alredy failed one of our
 	 * previous call
 	 */
 	mod_ap.old_port_index = mod_ap.new_port_index = port_index;
 	mod_ap.old_vlan_id = mod_ap.new_vlan_id = vlan_id;
-	nm_bdg_update_private_data(modified_bdg_name, modify_access_port,
+	nm_bdg_update_private_data(tagging_bdg_name, modify_access_port,
 		&mod_ap, conf->mod_bdg_auth_token);
 
 	return ret;
@@ -772,7 +777,7 @@ l_destroy_access_port:
 	/* cannot fail */
 	destroy_vale_port(ap_name);
 
-l_detach_vlan_port:
+l_detach_access_port:
 	/* cannot fail */
 	detach_port(vlan_bdg_name, port_name, vlan_bdg_auth_token, &port_index);
 	--conf->number_of_ports[vlan_id];
@@ -804,7 +809,7 @@ attach_trunk_port(struct vale_vlan_conf *conf, const char *port_name,
 		return EINVAL;
 	}
 
-	get_modified_bdg_name(mod_bdg_name, sizeof(mod_bdg_name),
+	get_tagging_bdg_name(mod_bdg_name, sizeof(mod_bdg_name),
 		conf->conf_name);
 	ret = attach_port(mod_bdg_name, port_name, conf->mod_bdg_auth_token,
 		&port_index);
@@ -834,12 +839,12 @@ action_attach(struct vale_vlan_conf *conf, const char *port_name,
 		if (ret) {
 			return ret;
 		}
-		get_modified_bdg_name(bdg_name, sizeof(bdg_name),
+		get_tagging_bdg_name(bdg_name, sizeof(bdg_name),
 			conf->conf_name);
 		break;
 
-	case VLAN_PORT:
-		ret = attach_vlan_port(conf, port_name, vlan_id);
+	case ACCESS_PORT:
+		ret = attach_access_port(conf, port_name, vlan_id);
 		if (ret) {
 			return ret;
 		}
@@ -860,9 +865,9 @@ action_attach(struct vale_vlan_conf *conf, const char *port_name,
 			detach_trunk_port(conf, port_name, vlan_id);
 			break;
 
-		case VLAN_PORT:
+		case ACCESS_PORT:
 			/* cannot fail */
-			detach_vlan_port(conf, port_name, vlan_id);
+			detach_access_port(conf, port_name, vlan_id);
 			break;
 		}
 	}
@@ -906,7 +911,7 @@ detach_trunk_port(struct vale_vlan_conf *conf, const char *port_name,
 		return EINVAL;
 	}
 
-	get_modified_bdg_name(bdg_name, sizeof(bdg_name), conf->conf_name);
+	get_tagging_bdg_name(bdg_name, sizeof(bdg_name), conf->conf_name);
 	ret = detach_port(bdg_name, port_name, conf->mod_bdg_auth_token,
 		&port_index);
 	if (ret) {
@@ -923,13 +928,13 @@ detach_trunk_port(struct vale_vlan_conf *conf, const char *port_name,
 
 
 static int
-detach_vlan_port(struct vale_vlan_conf *conf, const char *port_name,
+detach_access_port(struct vale_vlan_conf *conf, const char *port_name,
 	uint16_t vlan_id)
 {
 	struct mod_access_port mod_access_port;
 	uint32_t port_index = NM_BDG_NOPORT;
 	void *vlan_bdg_auth_token = NULL;
-	char modified_bdg_name[NETMAP_REQ_IFNAMSIZ];
+	char tagging_bdg_name[NETMAP_REQ_IFNAMSIZ];
 	char vlan_bdg_name[NETMAP_REQ_IFNAMSIZ];
 	char ap_name[NETMAP_REQ_IFNAMSIZ];
 	int ret = 0;
@@ -939,7 +944,7 @@ detach_vlan_port(struct vale_vlan_conf *conf, const char *port_name,
 	}
 	get_vlan_bdg_name(vlan_bdg_name, sizeof(vlan_bdg_name), conf->conf_name,
 		vlan_id);
-	get_modified_bdg_name(modified_bdg_name, sizeof(modified_bdg_name),
+	get_tagging_bdg_name(tagging_bdg_name, sizeof(tagging_bdg_name),
 		conf->conf_name);
 	get_ap_name(ap_name, sizeof(ap_name), conf->conf_name, vlan_id);
 	vlan_bdg_auth_token = conf->vlan_bdg_auth_tokens[vlan_id];
@@ -950,18 +955,18 @@ detach_vlan_port(struct vale_vlan_conf *conf, const char *port_name,
 		return ret;
 	}
 
-	if (--conf->number_of_ports[vlan_id] != 0) {
-		/* there are still other vlan port on this vlan bridge */
+	if (--conf->number_of_ports[vlan_id] > 0) {
+		/* there are still other vlan ports on this vlan bridge */
 		return ret;
 	}
 
 	/* we have just detached the last vlan port on this bridge, we need
 	 * to remove (and destroy) the access port and the bridge as well
 	 */
-	ret = detach_port(modified_bdg_name, ap_name,
+	ret = detach_port(tagging_bdg_name, ap_name,
 		conf->mod_bdg_auth_token, &port_index);
 	if (ret) {
-		goto l_attach_vlan_port;
+		goto l_attach_access_port;
 	}
 
 	ret = detach_port(vlan_bdg_name, ap_name, vlan_bdg_auth_token,
@@ -986,7 +991,7 @@ detach_vlan_port(struct vale_vlan_conf *conf, const char *port_name,
 	mod_access_port.old_vlan_id = vlan_id;
 	mod_access_port.new_vlan_id = 0x000;
 	/* this can't fail because we have the bridge in exlusive mode */
-	nm_bdg_update_private_data(modified_bdg_name, modify_access_port,
+	nm_bdg_update_private_data(tagging_bdg_name, modify_access_port,
 		&mod_access_port, conf->mod_bdg_auth_token);
 
 
@@ -1001,10 +1006,10 @@ l_attach_access_port_vlan_bdg:
 
 l_attach_access_port_mod_bdg:
 	/* cannot fail */
-	attach_port(modified_bdg_name, ap_name, conf->mod_bdg_auth_token,
+	attach_port(tagging_bdg_name, ap_name, conf->mod_bdg_auth_token,
 		&port_index);
 
-l_attach_vlan_port:
+l_attach_access_port:
 	/* cannot fail */
 	attach_port(vlan_bdg_name, port_name, vlan_bdg_auth_token, &port_index);
 	++conf->number_of_ports[vlan_id];
@@ -1016,7 +1021,7 @@ l_attach_vlan_port:
 
 
 static int
-search_vlan_id_of(struct vale_vlan_conf *conf, const char *port_name,
+lookup_vlan_id(struct vale_vlan_conf *conf, const char *port_name,
 	uint16_t *vlan_id)
 {
 	struct port_elem *p_elem = NULL;
@@ -1033,7 +1038,7 @@ search_vlan_id_of(struct vale_vlan_conf *conf, const char *port_name,
 
 
 static int
-search_trunk_port_of(struct vale_vlan_conf *conf, char *trunk_port_name)
+lookup_trunk_port(struct vale_vlan_conf *conf, char *trunk_port_name)
 {
 	struct port_elem *p_elem = NULL;
 
@@ -1058,7 +1063,7 @@ action_detach(struct vale_vlan_conf *conf, char *port_name, uint8_t port_type,
 	switch (port_type) {
 	case TRUNK_PORT:
 		if (port_name[0] == '\0') {
-			ret = search_trunk_port_of(conf, port_name);
+			ret = lookup_trunk_port(conf, port_name);
 			if (ret) {
 				return ret;
 			}
@@ -1069,15 +1074,15 @@ action_detach(struct vale_vlan_conf *conf, char *port_name, uint8_t port_type,
 		}
 		break;
 
-	case VLAN_PORT:
+	case ACCESS_PORT:
 		if (vlan_id == 0xFFF) {
-			ret = search_vlan_id_of(conf, port_name, &vlan_id);
+			ret = lookup_vlan_id(conf, port_name, &vlan_id);
 			if (ret) {
 				return ret;
 			}
 		}
 
-		ret = detach_vlan_port(conf, port_name, vlan_id);
+		ret = detach_access_port(conf, port_name, vlan_id);
 		if (ret) {
 			return ret;
 		}
@@ -1094,8 +1099,8 @@ action_detach(struct vale_vlan_conf *conf, char *port_name, uint8_t port_type,
 			ret = attach_trunk_port(conf, port_name, vlan_id);
 			break;
 
-		case VLAN_PORT:
-			ret = attach_vlan_port(conf, port_name, vlan_id);
+		case ACCESS_PORT:
+			ret = attach_access_port(conf, port_name, vlan_id);
 			break;
 		}
 	}
@@ -1138,11 +1143,11 @@ vv_write(struct vale_vlan_dev *dev, struct vlan_conf_entry *entries, size_t len)
 
 	if (len % sizeof(struct vlan_conf_entry) != 0) {
 		nm_prerr("write() must receive an array of "
-			 "'struct vlan_conf_entry', len of entries %d",
+			 "'struct vlan_conf_entry', len of entries %d\n",
 			 (int)len);
 		return EINVAL;
 	}
-	if (!does_conf_exist(dev->selected_conf)) {
+	if (!conf_exists(dev->selected_conf)) {
 		nm_prerr("vale_vlan: you must first select or create a "
 			"vlan conf through an ioctl()\n");
 		return EINVAL;
@@ -1153,8 +1158,8 @@ vv_write(struct vale_vlan_dev *dev, struct vlan_conf_entry *entries, size_t len)
 	for(i = 0, cur = entries; i < n_entries; ++i, ++cur) {
 		/* parameter checks */
 		if ((cur->port_type != TRUNK_PORT
-			&& cur->port_type != VLAN_PORT)
-			|| cur->vlan_id > 4095) {
+			&& cur->port_type != ACCESS_PORT)
+			|| cur->vlan_id >= 4095) {
 			nm_prinf("vale_vlan: invalid parameter for "
 				"entry number %d\n", i);
 			ret = EINVAL;
@@ -1167,7 +1172,7 @@ vv_write(struct vale_vlan_dev *dev, struct vlan_conf_entry *entries, size_t len)
 				cur->port_type, cur->vlan_id);
 			if (ret) {
 				nm_prerr("vale_vlan: error %d during action "
-					"CREATE_AND_ATTACH_PORT, entry n. %d",
+					"CREATE_AND_ATTACH_PORT, entry n. %d\n",
 					ret, i);
 				goto l_rollback_write;
 			}
@@ -1178,7 +1183,7 @@ vv_write(struct vale_vlan_dev *dev, struct vlan_conf_entry *entries, size_t len)
 				cur->port_type, cur->vlan_id);
 			if (ret) {
 				nm_prerr("vale_vlan: error %d during action "
-					"ATTACH_PORT, entry n. %d", ret, i);
+					"ATTACH_PORT, entry n. %d\n", ret, i);
 				goto l_rollback_write;
 			}
 			break;
@@ -1188,7 +1193,7 @@ vv_write(struct vale_vlan_dev *dev, struct vlan_conf_entry *entries, size_t len)
 				cur->port_type, cur->vlan_id);
 			if (ret) {
 				nm_prerr("vale_vlan: error %d during "
-					"DETACH_AND_DESTROY_PORT, entry n. %d",
+					"DETACH_AND_DESTROY_PORT, entry n. %d\n",
 					ret, i);
 				goto l_rollback_write;
 			}
@@ -1199,14 +1204,14 @@ vv_write(struct vale_vlan_dev *dev, struct vlan_conf_entry *entries, size_t len)
 				cur->port_type, cur->vlan_id);
 			if (ret) {
 				nm_prerr("vale_vlan: error %d during "
-					"DETACH_PORT, entry n. %d", ret, i);
+					"DETACH_PORT, entry n. %d\n", ret, i);
 				goto l_rollback_write;
 			}
 			break;
 
 		default:
 			nm_prinf("vale_vlan: unknown action for "
-				"entry number %d", i);
+				"entry number %d\n", i);
 			ret = EINVAL;
 			goto l_rollback_write;
 		}
@@ -1223,7 +1228,7 @@ l_rollback_write:
 				cur->port_type, cur->vlan_id);
 			if (ret) {
 				nm_prerr("Failed while rollbacking, "
-					"entry n. %d", i);
+					"entry n. %d\n", i);
 			}
 			break;
 
@@ -1232,7 +1237,7 @@ l_rollback_write:
 				cur->port_type, cur->vlan_id);
 			if (ret) {
 				nm_prerr("Failed while rollbacking, "
-					"entry n. %d", i);
+					"entry n. %d\n", i);
 			}
 			break;
 
@@ -1241,7 +1246,7 @@ l_rollback_write:
 				cur->port_type, cur->vlan_id);
 			if (ret) {
 				nm_prerr("Failed while rollbacking, "
-					"entry n. %d", i);
+					"entry n. %d\n", i);
 			}
 			break;
 
@@ -1250,7 +1255,7 @@ l_rollback_write:
 				cur->port_type, cur->vlan_id);
 			if (ret) {
 				nm_prerr("Failed while rollbacking, "
-					"entry n. %d", i);
+					"entry n. %d\n", i);
 			}
 			break;
 		}
@@ -1271,8 +1276,8 @@ vv_read(struct vale_vlan_dev *dev, uint8_t *buf, size_t *len)
 	if (dev->error_entry != -1) {
 		/* error read() */
 		if (*len != sizeof(dev->error_entry)) {
-			nm_prerr("After receiving an error from a write() "
-				"call, read() must receive a int32_t pointer");
+			nm_prerr("After receiving an error from a write() call,"
+				" read() must receive a int32_t pointer\n");
 			return EINVAL;
 		}
 
@@ -1287,7 +1292,7 @@ vv_read(struct vale_vlan_dev *dev, uint8_t *buf, size_t *len)
 
 		if (*len % sizeof(struct port) != 0) {
 			nm_prerr("read() must receive an array of "
-				"'struct vlan_conf_entry'");
+				"'struct vlan_conf_entry'\n");
 			return EINVAL;
 		}
 
@@ -1331,7 +1336,7 @@ vv_iocctrl(struct vale_vlan_dev *dev, struct vlanreq_header *req)
 	case VV_REQ_CREATE_CONF:
 		ret = vale_vlan_create_conf(req->vr_conf_name, &conf_index);
 		if (ret) {
-			nm_prerr("Error %d while creating configuration '%s'",
+			nm_prerr("Error %d while creating configuration %s\n",
 				ret, req->vr_conf_name);
 			return ret;
 		}
@@ -1342,7 +1347,7 @@ vv_iocctrl(struct vale_vlan_dev *dev, struct vlanreq_header *req)
 	case VV_REQ_SELECT_CONF:
 		ret = vale_vlan_select_conf(req->vr_conf_name, &conf_index);
 		if (ret) {
-			nm_prerr("Error %d while selecting configuration '%s'",
+			nm_prerr("Error %d while selecting configuration %s\n",
 				ret, req->vr_conf_name);
 			return ret;
 		}
@@ -1353,7 +1358,7 @@ vv_iocctrl(struct vale_vlan_dev *dev, struct vlanreq_header *req)
 	case VV_REQ_DELETE_CONF:
 		ret = vale_vlan_delete_conf(req->vr_conf_name);
 		if (ret) {
-			nm_prerr("Configuration '%s' %s\n", req->vr_conf_name,
+			nm_prerr("Configuration %s %s\n", req->vr_conf_name,
 				ret == ENXIO ? "doesn't exist"
 				: "still has ports attached");
 			return ret;
