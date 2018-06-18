@@ -1,11 +1,9 @@
-#include <linux/kernel.h>
 #include <linux/fs.h>
-#include <linux/slab.h>
+#include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/slab.h>
 
 #include <dev/vale_vlan/vale_vlan_kern.h>
-
-
 
 void *
 vv_malloc(size_t size)
@@ -20,8 +18,6 @@ vv_malloc(size_t size)
 	return rv;
 }
 
-
-
 void
 vv_free(void *addr)
 {
@@ -29,16 +25,12 @@ vv_free(void *addr)
 	kfree(addr);
 }
 
-
-
 void
 vv_try_module_get()
 {
 
 	try_module_get(THIS_MODULE);
 }
-
-
 
 void
 vv_module_put()

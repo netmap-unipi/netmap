@@ -1,25 +1,21 @@
-#include <stdio.h>
-#include <inttypes.h>
-#include <unistd.h>
-#include <getopt.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
-#include <net/if.h>
-#include <stdlib.h>
 #include <errno.h>
-#include <string.h>
+#include <fcntl.h>
+#include <getopt.h>
+#include <inttypes.h>
+#include <net/if.h>
 #include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include <net/vale_vlan_user.h>
 
-
-
 #define DEVICE_NAME "/dev/vale_vlan"
-
-
 
 static int
 str_to_uint16(const char *str, uint16_t *res)
@@ -29,14 +25,13 @@ str_to_uint16(const char *str, uint16_t *res)
 	errno = 0;
 
 	val = strtoimax(str, &end, 10);
-	if (errno == ERANGE || val < 0 || val > UINT16_MAX || end == str || *end != '\0') {
+	if (errno == ERANGE || val < 0 || val > UINT16_MAX || end == str ||
+	    *end != '\0') {
 		return -1;
 	}
-	*res = (uint16_t) val;
+	*res = (uint16_t)val;
 	return 0;
 }
-
-
 
 static int
 vlan_ioctl(int fd, const char *conf_name, uint16_t req_type)
@@ -50,26 +45,23 @@ vlan_ioctl(int fd, const char *conf_name, uint16_t req_type)
 	return ioctl(fd, VV_IOCCTRL, &hdr);
 }
 
-
 static ssize_t
 vlan_write(int fd, const char *port_name, uint8_t port_type, uint8_t action,
-	uint16_t vlan_id)
+	   uint16_t vlan_id)
 {
 	struct vlan_conf_entry entry;
 
 	memset(&entry, 0, sizeof(entry));
 	if (port_name) {
-		snprintf(entry.port_name, sizeof(entry.port_name),
-			"%s",
-			port_name);
+		snprintf(entry.port_name, sizeof(entry.port_name), "%s",
+			 port_name);
 	}
 	entry.port_type = port_type;
-	entry.vlan_id = vlan_id;
-	entry.action = action;
+	entry.vlan_id   = vlan_id;
+	entry.action    = action;
 
 	return write(fd, &entry, sizeof(entry));
 }
-
 
 #define MAX_LIST_ENTRIES 256
 
@@ -91,21 +83,18 @@ list_conf(int fd)
 		exit(EXIT_FAILURE);
 	}
 	for (i = 0; i < ret / (int)sizeof(struct port); ++i) {
-		printf("%s%s, type:",
-			port_entries[i].bdg_name,
-			port_entries[i].port_name);
+		printf("%s%s, type:", port_entries[i].bdg_name,
+		       port_entries[i].port_name);
 		if (port_entries[i].port_type == TRUNK_PORT) {
 			printf("trunk port\n");
 		} else {
 			printf("access port, vlan id:%d\n",
-				port_entries[i].vlan_id);
+			       port_entries[i].vlan_id);
 		}
 	}
 
 	free(port_entries);
 }
-
-
 
 static int
 valid_port_name(const char *conf_name)
@@ -113,8 +102,6 @@ valid_port_name(const char *conf_name)
 
 	return (strlen(conf_name) + 1) <= NETMAP_REQ_IFNAMSIZ;
 }
-
-
 
 static void
 attach_access_port(int fd, char *port_and_vlan, int create)
@@ -149,14 +136,12 @@ attach_access_port(int fd, char *port_and_vlan, int create)
 	}
 
 	action = create ? CREATE_AND_ATTACH_PORT : ATTACH_PORT;
-	ret = vlan_write(fd, port_name, ACCESS_PORT, action, vlan_id);
+	ret    = vlan_write(fd, port_name, ACCESS_PORT, action, vlan_id);
 	if (ret < 0) {
 		perror(port_name);
 		exit(EXIT_FAILURE);
 	}
 }
-
-
 
 static void
 detach_access_port(int fd, const char *port_name, int destroy)
@@ -165,14 +150,12 @@ detach_access_port(int fd, const char *port_name, int destroy)
 	ssize_t ret;
 
 	action = destroy ? DETACH_AND_DESTROY_PORT : DETACH_PORT;
-	ret = vlan_write(fd, port_name, ACCESS_PORT, action, 0xFFF);
+	ret    = vlan_write(fd, port_name, ACCESS_PORT, action, 0xFFF);
 	if (ret < 0) {
 		perror(port_name);
 		exit(EXIT_FAILURE);
 	}
 }
-
-
 
 static void
 attach_trunk_port(int fd, const char *port_name, int create)
@@ -181,19 +164,18 @@ attach_trunk_port(int fd, const char *port_name, int create)
 	ssize_t ret;
 
 	if (!valid_port_name(port_name)) {
-		fprintf(stderr, "Max port name length = %d\n", NETMAP_REQ_IFNAMSIZ);
+		fprintf(stderr, "Max port name length = %d\n",
+			NETMAP_REQ_IFNAMSIZ);
 		exit(EXIT_FAILURE);
 	}
 
 	action = create ? CREATE_AND_ATTACH_PORT : ATTACH_PORT;
-	ret = vlan_write(fd, port_name, TRUNK_PORT, action, 0xFFF);
+	ret    = vlan_write(fd, port_name, TRUNK_PORT, action, 0xFFF);
 	if (ret < 0) {
 		perror(port_name);
 		exit(EXIT_FAILURE);
 	}
 }
-
-
 
 static void
 detach_trunk_port(int fd, int destroy)
@@ -202,13 +184,11 @@ detach_trunk_port(int fd, int destroy)
 	ssize_t ret;
 
 	action = destroy ? DETACH_AND_DESTROY_PORT : DETACH_PORT;
-	ret = vlan_write(fd, NULL, TRUNK_PORT, action, 0xFFF);
+	ret    = vlan_write(fd, NULL, TRUNK_PORT, action, 0xFFF);
 	if (ret < 0) {
 		exit(EXIT_FAILURE);
 	}
 }
-
-
 
 static int
 valid_conf_name(const char *conf_name)
@@ -216,8 +196,6 @@ valid_conf_name(const char *conf_name)
 
 	return (strlen(conf_name) + 1) <= VV_CONF_NAME_LENGTH;
 }
-
-
 
 static void
 create_conf(int fd, const char *conf_name)
@@ -237,8 +215,6 @@ create_conf(int fd, const char *conf_name)
 	}
 }
 
-
-
 static void
 delete_conf(int fd, const char *conf_name)
 {
@@ -256,8 +232,6 @@ delete_conf(int fd, const char *conf_name)
 		exit(EXIT_FAILURE);
 	}
 }
-
-
 
 static void
 select_conf(int fd, const char *conf_name)
@@ -277,8 +251,6 @@ select_conf(int fd, const char *conf_name)
 	}
 }
 
-
-
 static void
 usage(const char *file_name, FILE *std_stream)
 {
@@ -287,27 +259,25 @@ usage(const char *file_name, FILE *std_stream)
 		"Usage:\n"
 		"%s arguments\n"
 		"\t-n conf_name		create (and select) configuration "
-			"conf_name\n"
+		"conf_name\n"
 		"\t-r conf_name		delete configuration conf_name\n"
 		"\t-s conf_name		select configuration conf_name\n"
 		"\t-t interface		attach interface as trunk port\n"
 		"\t-T			detach trunk port\n"
 		"\t-p interfaces		create persistent VALE port "
-			"and attach it as trunk port\n"
+		"and attach it as trunk port\n"
 		"\t-P 			detach trunk port and destroy it (must "
-			"have been created through -p)\n"
+		"have been created through -p)\n"
 		"\t-a interface=vlan_id	attach interface as vlan port with id "
-			"vlan_id\n"
+		"vlan_id\n"
 		"\t-A interface		detach vlan port interface\n"
 		"\t-c interface=vlan_id	create persistent VALE port and attach "
-			"it as vlan port with id vlan_id\n"
+		"it as vlan port with id vlan_id\n"
 		"\t-C interface		detach vlan port interface and destroy "
-			"it (must have been created through -c)\n"
+		"it (must have been created through -c)\n"
 		"\t-l 			list attached interfaces\n",
 		file_name);
 }
-
-
 
 int
 main(int argc, char **argv)
@@ -328,46 +298,46 @@ main(int argc, char **argv)
 
 	while ((c = getopt(argc, argv, "n:s:r:t:Tp:Pc:C:a:A:hl")) != -1) {
 		switch (c) {
-		case 't':	/* attach trunk port */
+		case 't': /* attach trunk port */
 			attach_trunk_port(fd, optarg, 0 /* don't create */);
 			break;
-		case 'T':	/* detach trunk port */
+		case 'T': /* detach trunk port */
 			detach_trunk_port(fd, 0 /* don't destroy */);
 			break;
-		case 'p':	/* create and attach trunk port */
+		case 'p': /* create and attach trunk port */
 			attach_trunk_port(fd, optarg, 1 /* create */);
 			break;
-		case 'P':	/* detach and destroy trunk port */
+		case 'P': /* detach and destroy trunk port */
 			detach_trunk_port(fd, 1 /* destroy */);
 			break;
-		case 'a':	/* attach vlan port */
+		case 'a': /* attach vlan port */
 			attach_access_port(fd, optarg, 0 /* don't create */);
 			break;
-		case 'A':	/* detach vlan port */
+		case 'A': /* detach vlan port */
 			detach_access_port(fd, optarg, 0 /* don't destroy */);
 			break;
-		case 'c':	/* create and attach vlan port */
+		case 'c': /* create and attach vlan port */
 			attach_access_port(fd, optarg, 1 /* create */);
 			break;
-		case 'C':	/* detach and destroy vlan port */
+		case 'C': /* detach and destroy vlan port */
 			detach_access_port(fd, optarg, 1 /* destroy */);
 			break;
-		case 'n':	/* create new configuration */
+		case 'n': /* create new configuration */
 			create_conf(fd, optarg);
 			break;
-		case 'r':	/* destroy existing configuration */
+		case 'r': /* destroy existing configuration */
 			delete_conf(fd, optarg);
 			break;
-		case 's':	/* select existing configuration */
+		case 's': /* select existing configuration */
 			select_conf(fd, optarg);
 			break;
-		case 'l':	/* list existing configuration */
+		case 'l': /* list existing configuration */
 			list_conf(fd);
 			break;
-		case 'h':	/* help */
+		case 'h': /* help */
 			usage(argv[0], stdout);
 			exit(0);
-		default:	/* error, unknown option or missing parameter */
+		default: /* error, unknown option or missing parameter */
 			usage(argv[0], stdout);
 			exit(EXIT_FAILURE);
 		}
