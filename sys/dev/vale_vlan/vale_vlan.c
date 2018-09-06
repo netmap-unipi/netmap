@@ -596,7 +596,7 @@ attach_port(const char *bdg_name, const char *port_name, void *auth_token,
 	hdr.nr_body    = (uintptr_t)&nmr_att;
 	snprintf(hdr.nr_name, sizeof(hdr.nr_name), "%s%s", bdg_name, port_name);
 
-	ret = nm_bdg_ctl_attach(&hdr, auth_token);
+	ret = netmap_vale_attach(&hdr, auth_token);
 	if (ret == 0) {
 		vv_try_module_get();
 	}
@@ -621,7 +621,7 @@ detach_port(const char *bdg_name, const char *port_name, void *auth_token,
 	hdr.nr_body    = (uintptr_t)&nmr_det;
 	snprintf(hdr.nr_name, sizeof(hdr.nr_name), "%s%s", bdg_name, port_name);
 
-	ret = nm_bdg_ctl_detach(&hdr, auth_token);
+	ret = netmap_vale_detach(&hdr, auth_token);
 	if (ret == 0) {
 		vv_module_put();
 	}
@@ -701,7 +701,7 @@ attach_access_port(struct vale_vlan_conf *conf, const char *port_name,
 	 */
 	mod_ap.old_port_index = mod_ap.new_port_index = port_index;
 	mod_ap.old_vlan_id = mod_ap.new_vlan_id = vlan_id;
-	nm_bdg_update_private_data(tagging_bdg_name, modify_access_port,
+	netmap_bdg_update_private_data(tagging_bdg_name, modify_access_port,
 				   &mod_ap, conf->mod_bdg_auth_token);
 
 	return ret;
@@ -753,7 +753,7 @@ attach_trunk_port(struct vale_vlan_conf *conf, const char *port_name,
 	}
 
 	/* this can't fail because we have the bridge in exclusive mode */
-	nm_bdg_update_private_data(mod_bdg_name, modify_trunk_port, &port_index,
+	netmap_bdg_update_private_data(mod_bdg_name, modify_trunk_port, &port_index,
 				   conf->mod_bdg_auth_token);
 	return ret;
 }
@@ -847,7 +847,7 @@ detach_trunk_port(struct vale_vlan_conf *conf, const char *port_name,
 
 	port_index = NM_BDG_NOPORT;
 	/* this can't fail because we have the bridge in exlusive mode */
-	nm_bdg_update_private_data(bdg_name, modify_trunk_port, &port_index,
+	netmap_bdg_update_private_data(bdg_name, modify_trunk_port, &port_index,
 				   conf->mod_bdg_auth_token);
 	return ret;
 }
@@ -916,7 +916,7 @@ detach_access_port(struct vale_vlan_conf *conf, const char *port_name,
 	mod_access_port.old_vlan_id    = vlan_id;
 	mod_access_port.new_vlan_id    = 0x000;
 	/* this can't fail because we have the bridge in exlusive mode */
-	nm_bdg_update_private_data(tagging_bdg_name, modify_access_port,
+	netmap_bdg_update_private_data(tagging_bdg_name, modify_access_port,
 				   &mod_access_port, conf->mod_bdg_auth_token);
 
 	return ret;

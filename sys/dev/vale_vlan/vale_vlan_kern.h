@@ -39,6 +39,7 @@
 #include <net/vale_vlan_user.h>
 
 #include <dev/netmap/netmap_kern.h>
+#include <dev/netmap/netmap_bdg.h>
 #include <net/netmap.h>
 
 struct vale_vlan_dev {
