@@ -324,7 +324,7 @@ vale_vlan_create_conf(const char *conf_name, uint16_t *conf_index)
 	/* create bridge in exclusive mode */
 	get_tagging_bdg_name(tagging_bdg_name, sizeof(tagging_bdg_name),
 			     conf_name);
-	auth_token = netmap_bdg_create(tagging_bdg_name, &ret);
+	auth_token = netmap_vale_create(tagging_bdg_name, &ret);
 	if (auth_token == NULL || ret != 0) {
 		nm_prerr("Error %d during bridge %s creation\n", ret,
 			 tagging_bdg_name);
@@ -345,7 +345,7 @@ vale_vlan_create_conf(const char *conf_name, uint16_t *conf_index)
 		int ret2;
 		nm_prerr("Error %d during bridge %s regops()\n", ret,
 			 tagging_bdg_name);
-		ret2 = netmap_bdg_destroy(tagging_bdg_name,
+		ret2 = netmap_vale_destroy(tagging_bdg_name,
 					  conf->mod_bdg_auth_token);
 		if (ret2) {
 			/* cannot happen */
@@ -428,7 +428,7 @@ vale_vlan_delete_conf(const char *conf_name)
 
 	get_tagging_bdg_name(tagging_bdg_name, sizeof(tagging_bdg_name),
 			     conf_name);
-	ret = netmap_bdg_destroy(tagging_bdg_name, conf->mod_bdg_auth_token);
+	ret = netmap_vale_destroy(tagging_bdg_name, conf->mod_bdg_auth_token);
 	if (ret) {
 		/* cannot happen (?) */
 		nm_prerr("Error %d during bridge %s destroy(), "
@@ -653,7 +653,7 @@ attach_access_port(struct vale_vlan_conf *conf, const char *port_name,
 
 	if (conf->number_of_ports[vlan_id] == 0) {
 		/* we need to create a bridge in exclusive mode */
-		vlan_bdg_auth_token = netmap_bdg_create(vlan_bdg_name, &ret);
+		vlan_bdg_auth_token = netmap_vale_create(vlan_bdg_name, &ret);
 		if (vlan_bdg_auth_token == NULL || ret != 0) {
 			return ret;
 		}
@@ -726,7 +726,7 @@ l_destroy_vlan_bdg:
 		 */
 		conf->vlan_bdg_auth_tokens[vlan_id] = NULL;
 		/* cannot fail */
-		netmap_bdg_destroy(vlan_bdg_name, vlan_bdg_auth_token);
+		netmap_vale_destroy(vlan_bdg_name, vlan_bdg_auth_token);
 	}
 
 	return ret;
@@ -905,7 +905,7 @@ detach_access_port(struct vale_vlan_conf *conf, const char *port_name,
 		goto l_attach_access_port_vlan_bdg;
 	}
 
-	ret = netmap_bdg_destroy(vlan_bdg_name, vlan_bdg_auth_token);
+	ret = netmap_vale_destroy(vlan_bdg_name, vlan_bdg_auth_token);
 	if (ret) {
 		/* cannot happen (?) */
 		goto l_create_access_port;
