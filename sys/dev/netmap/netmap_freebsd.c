@@ -630,7 +630,7 @@ struct nm_os_extmem {
 	vm_object_t obj;
 	vm_offset_t kva;
 	vm_offset_t size;
-	vm_pindex_t scan;
+	uintptr_t scan;
 };
 
 void
@@ -655,7 +655,7 @@ nm_os_extmem_nextpage(struct nm_os_extmem *e)
 int
 nm_os_extmem_isequal(struct nm_os_extmem *e1, struct nm_os_extmem *e2)
 {
-	return (e1->obj == e1->obj);
+	return (e1->obj == e2->obj);
 }
 
 int
@@ -1502,7 +1502,7 @@ netmap_kqfilter(struct cdev *dev, struct knote *kn)
 	kn->kn_fop = (ev == EVFILT_WRITE) ?
 		&netmap_wfiltops : &netmap_rfiltops;
 	kn->kn_hook = priv;
-	knlist_add(&si->si.si_note, kn, 1);
+	knlist_add(&si->si.si_note, kn, 0);
 	// XXX unlock(priv)
 	ND("register %p %s td %p priv %p kn %p np_nifp %p kn_fp/fpop %s",
 		na, na->ifp->if_xname, curthread, priv, kn,

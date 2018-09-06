@@ -725,7 +725,7 @@ dump_payload(const char *_p, int len, struct netmap_ring *ring, int cur)
 		ring->slot[cur].flags, len);
 	/* hexdump routine */
 	for (i = 0; i < len; ) {
-		memset(buf, sizeof(buf), ' ');
+		memset(buf, ' ', sizeof(buf));
 		sprintf(buf, "%5d: ", i);
 		i0 = i;
 		for (j=0; j < 16 && i < len; i++, j++)
@@ -954,7 +954,7 @@ initialize_packet(struct targ *targ)
 	struct udphdr udp;
 	void *udp_ptr;
 	uint16_t paylen;
-	uint32_t csum;
+	uint32_t csum = 0;
 	const char *payload = targ->g->options & OPT_INDIRECT ?
 		indirect_payload : default_payload;
 	int i, l0 = strlen(payload);
@@ -1233,8 +1233,7 @@ ping_body(void *data)
 	uint64_t buckets[64];	/* bins for delays, ns */
 	int rate_limit = targ->g->tx_rate, tosend = 0;
 
-	frame = &targ->pkt;
-	*((char **)frame) += sizeof(targ->pkt.vh) - targ->g->virt_header;
+	frame = (char*)&targ->pkt + sizeof(targ->pkt.vh) - targ->g->virt_header;
 	size = targ->g->pkt_size + targ->g->virt_header;
 
 
@@ -1253,7 +1252,7 @@ ping_body(void *data)
 		nexttime = targ->tic;
 	}
 	while (!targ->cancel && (n == 0 || sent < n)) {
-		struct netmap_ring *ring = NETMAP_TXRING(nifp, 0);
+		struct netmap_ring *ring = NETMAP_TXRING(nifp, targ->nmd->first_tx_ring);
 		struct netmap_slot *slot;
 		char *p;
 		int rv;
@@ -1361,7 +1360,7 @@ ping_body(void *data)
 		if (ts.tv_sec >= 1) {
 			D("count %d RTT: min %d av %d ns",
 				(int)count, (int)t_min, (int)(av/count));
-			int k, j, kmin;
+			int k, j, kmin, off;
 			char buf[512];
 
 			for (kmin = 0; kmin < 64; kmin ++)
@@ -1371,8 +1370,10 @@ ping_body(void *data)
 				if (buckets[k])
 					break;
 			buf[0] = '\0';
-			for (j = kmin; j <= k; j++)
-				sprintf(buf, "%s %5d", buf, (int)buckets[j]);
+			off = 0;
+			for (j = kmin; j <= k; j++) {
+				off += sprintf(buf + off, " %5d", (int)buckets[j]);
+			}
 			D("k: %d .. %d\n\t%s", 1<<kmin, 1<<k, buf);
 			bzero(&buckets, sizeof(buckets));
 			count = 0;
@@ -1436,7 +1437,7 @@ pong_body(void *data)
 			continue;
 		}
 #endif
-		txring = NETMAP_TXRING(nifp, 0);
+		txring = NETMAP_TXRING(nifp, targ->nmd->first_tx_ring);
 		txcur = txring->cur;
 		txavail = nm_ring_space(txring);
 		/* see what we got back */
@@ -1508,8 +1509,7 @@ sender_body(void *data)
 	int size;
 
 	if (targ->frame == NULL) {
-		frame = pkt;
-		*((char **)frame) += sizeof(pkt->vh) - targ->g->virt_header;
+		frame = (char *)pkt + sizeof(pkt->vh) - targ->g->virt_header;
 		size = targ->g->pkt_size + targ->g->virt_header;
 	} else {
 		frame = targ->frame;
@@ -1861,8 +1861,7 @@ txseq_body(void *data)
 		D("Ignoring -n argument");
 	}
 
-	frame = pkt;
-	*((char **)frame) += sizeof(pkt->vh) - targ->g->virt_header;
+	frame = (char *)pkt + sizeof(pkt->vh) - targ->g->virt_header;
 	size = targ->g->pkt_size + targ->g->virt_header;
 
 	D("start, fd %d main_fd %d", targ->fd, targ->g->main_fd);
@@ -2434,7 +2433,7 @@ main_thread(struct glob_arg *g)
 	prev.pkts = prev.bytes = prev.events = 0;
 	gettimeofday(&prev.t, NULL);
 	for (;;) {
-		char b1[40], b2[40], b3[40], b4[70];
+		char b1[40], b2[40], b3[40], b4[100];
 		uint64_t pps, usec;
 		struct my_ctrs x;
 		double abs;
@@ -2612,7 +2611,12 @@ tap_alloc(char *dev)
 		/* if a device name was specified, put it in the structure; otherwise,
 		* the kernel will try to allocate the "next" device of the
 		* specified type */
-		strncpy(ifr.ifr_name, dev, IFNAMSIZ);
+		size_t len = strlen(dev);
+		if (len > IFNAMSIZ) {
+			D("%s too long", dev);
+			return -1;
+		}
+		memcpy(ifr.ifr_name, dev, len);
 	}
 
 	/* try to create the device */
