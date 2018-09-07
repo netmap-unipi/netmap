@@ -57,6 +57,11 @@ tag_frame(struct nm_bdg_fwd *ft, struct netmap_vp_adapter *vpna,
 		 * last fragment case is covered without any additional check
 		 */
 		n_bytes = buf_len - TAG_LENGTH - ft_cur->ft_offset;
+		if (ft_cur == ft) {
+			start_addr += TAG_START;
+			dest_addr  += TAG_START;
+			n_bytes    -= TAG_START;
+		}
 		memmove(dest_addr, start_addr, n_bytes);
 	}
 
@@ -85,7 +90,7 @@ untag_frame(struct nm_bdg_fwd *ft, struct netmap_vp_adapter *vpna,
 		/* VLAN header not contained in the first fragment */
 		return EINVAL;
 	}
-	if (ft_end->ft_len < TAG_LENGTH) {
+	if (ft_end->ft_len <= TAG_LENGTH) {
 		/* During the untagging we strip TAG_LENGTH bytes from the
 		 * frame, therefore in this case last fragment would become
 		 * empty and we would need to update fragmentation flags etc.
@@ -131,6 +136,11 @@ untag_frame(struct nm_bdg_fwd *ft, struct netmap_vp_adapter *vpna,
 		dest_addr  = buf + ft->ft_offset;
 		start_addr = dest_addr + TAG_LENGTH;
 		n_bytes    = buf_len - TAG_LENGTH - ft->ft_offset;
+		if (ft_cur == ft) {
+			start_addr += TAG_START;
+			dest_addr  += TAG_START;
+			n_bytes    -= TAG_START;
+		}
 		memmove(dest_addr, start_addr, n_bytes);
 	}
 
