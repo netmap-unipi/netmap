@@ -50,10 +50,28 @@
 #define PTNETMAP_MEM_PCI_BAR            1
 #define PTNETMAP_MSIX_PCI_BAR           2
 
-/* Device registers for ptnetmap-memdev */
+/*
+ * Device registers for ptnetmap memory device.
+ */
 #define PTNET_MDEV_IO_MEMSIZE_LO	0	/* netmap memory size (low) */
 #define PTNET_MDEV_IO_MEMSIZE_HI	4	/* netmap_memory_size (high) */
 #define PTNET_MDEV_IO_MEMID		8	/* memory allocator ID in the host */
+/* Registers used to forward allocation requests to the host. The guest
+ * prepares the input values in the TX_RINGS, RX_RINGS, TX_SLOTS and
+ * RX_SLOTS register. Then, it writes 1 to the CTRL register to trigger
+ * the allocation. On success, NIF_OFS contains the offset of a new
+ * netmap_if pointing to the new rings, and the number of actually allocated
+ * rings and slots can be read from the same registers used as input.
+ * If NIF_OFS is zero, it means that the allocation failed. */
+#define PTNET_MDEV_IO_ALLOC_TX_RINGS	12
+#define PTNET_MDEV_IO_ALLOC_RX_RINGS	16
+#define PTNET_MDEV_IO_ALLOC_TX_SLOTS	20
+#define PTNET_MDEV_IO_ALLOC_RX_SLOTS	24
+#define PTNET_MDEV_IO_ALLOC_NIF_OFS_LO	28
+#define PTNET_MDEV_IO_ALLOC_NIF_OFS_HI	32
+#define PTNET_MDEV_IO_ALLOC_CTRL	36
+/* Read only registers that export information about the
+ * passed-through netmap allocator. */
 #define PTNET_MDEV_IO_IF_POOL_OFS	64
 #define PTNET_MDEV_IO_IF_POOL_OBJNUM	68
 #define PTNET_MDEV_IO_IF_POOL_OBJSZ	72
