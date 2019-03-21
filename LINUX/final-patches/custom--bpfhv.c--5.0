@@ -1,18 +1,18 @@
 diff --git a/bpfhv.c/kernel/bpfhv.c b/bpfhv.c/kernel/bpfhv.c
-index 89c338d..d285066 100644
+index 89c338d..2f1b741 100644
 --- a/bpfhv.c/kernel/bpfhv.c
 +++ b/bpfhv.c/kernel/bpfhv.c
-@@ -148,6 +148,10 @@ struct bpfhv_txq {
- 	char irq_name[64];
- };
+@@ -194,6 +194,10 @@ static int		bpfhv_set_features(struct net_device *netdev,
+ static void		bpfhv_get_drvinfo(struct net_device *netdev,
+ 					  struct ethtool_drvinfo *drvinfo);
  
 +#if defined(CONFIG_NETMAP) || defined(CONFIG_NETMAP_MODULE)
 +#include <bpfhv_netmap.h>
 +#endif
 +
- static uint32_t		bpfhv_hv_features(struct bpfhv_info *bi);
- static int		bpfhv_probe(struct pci_dev *pdev,
- 					const struct pci_device_id *id);
+ static const struct net_device_ops bpfhv_netdev_ops = {
+ 	.ndo_open			= bpfhv_open,
+ 	.ndo_stop			= bpfhv_close,
 @@ -407,6 +411,10 @@ bpfhv_probe(struct pci_dev *pdev, const struct pci_device_id *id)
  		goto err_irqs;
  	}
@@ -29,7 +29,7 @@ index 89c338d..d285066 100644
  	}
  	cancel_work_sync(&bi->upgrade_work);
 +#ifdef DEV_NETMAP
-+	netmap_detach(NA(netdev));
++	netmap_detach(netdev);
 +#endif
  	bpfhv_irqs_teardown(bi);
  	unregister_netdev(netdev);
