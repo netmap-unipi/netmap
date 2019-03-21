@@ -1,0 +1,101 @@
+diff --git a/bpfhv.c/kernel/bpfhv.c b/bpfhv.c/kernel/bpfhv.c
+index 89c338d..d285066 100644
+--- a/bpfhv.c/kernel/bpfhv.c
++++ b/bpfhv.c/kernel/bpfhv.c
+@@ -148,6 +148,10 @@ struct bpfhv_txq {
+ 	char irq_name[64];
+ };
+ 
++#if defined(CONFIG_NETMAP) || defined(CONFIG_NETMAP_MODULE)
++#include <bpfhv_netmap.h>
++#endif
++
+ static uint32_t		bpfhv_hv_features(struct bpfhv_info *bi);
+ static int		bpfhv_probe(struct pci_dev *pdev,
+ 					const struct pci_device_id *id);
+@@ -407,6 +411,10 @@ bpfhv_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+ 		goto err_irqs;
+ 	}
+ 
++#ifdef DEV_NETMAP
++	bpfhv_netmap_attach(bi);
++#endif
++
+ 	return 0;
+ 
+ err_irqs:
+@@ -445,6 +453,9 @@ bpfhv_remove(struct pci_dev *pdev)
+ 		netif_napi_del(&rxq->napi);
+ 	}
+ 	cancel_work_sync(&bi->upgrade_work);
++#ifdef DEV_NETMAP
++	netmap_detach(NA(netdev));
++#endif
+ 	bpfhv_irqs_teardown(bi);
+ 	unregister_netdev(netdev);
+ 	bpfhv_programs_teardown(bi);
+@@ -680,6 +691,13 @@ static irqreturn_t
+ bpfhv_rx_intr(int irq, void *data)
+ {
+ 	struct bpfhv_rxq *rxq = data;
++#ifdef DEV_NETMAP
++	int nm_irq = netmap_rx_irq(rxq->bi->netdev, rxq - rxq->bi->rxqs, &irq);
++
++	if (nm_irq != NM_IRQ_PASS) {
++		return 1;
++	}
++#endif /* DEV_NETMAP */
+ 
+ 	napi_schedule(&rxq->napi);
+ 
+@@ -691,6 +709,13 @@ bpfhv_tx_intr(int irq, void *data)
+ {
+ 	struct bpfhv_txq *txq = data;
+ 
++#ifdef DEV_NETMAP
++	if (netmap_tx_irq(txq->bi->netdev, txq - txq->bi->txqs)
++			!= NM_IRQ_PASS) {
++		return 1; /* cleaned ok */
++	}
++#endif /* DEV_NETMAP */
++
+ 	if (tx_napi) {
+ 		napi_schedule(&txq->napi);
+ 	} else {
+@@ -1372,6 +1397,11 @@ bpfhv_resources_alloc(struct bpfhv_info *bi)
+ 	for (i = 0; i < bi->num_rx_queues; i++) {
+ 		struct bpfhv_rxq *rxq = bi->rxqs + i;
+ 
++#ifdef DEV_NETMAP
++		if (bpfhv_netmap_rxq_attach(bi, i)) {
++			continue;
++		}
++#endif
+ 		ret = bpfhv_rx_refill(rxq, GFP_KERNEL);
+ 		if (ret) {
+ 			return ret;
+@@ -1445,6 +1475,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
+ 	for (i = 0; i < bi->num_tx_queues; i++) {
+ 		struct bpfhv_txq *txq = bi->txqs + i;
+ 		unsigned int count = 0;
++#ifdef DEV_NETMAP
++		if (bpfhv_netmap_txq_detach(bi, i)) {
++			continue;
++		}
++#endif
+ 
+ 		for (;;) {
+ 			int ret;
+@@ -1482,7 +1517,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
+ 		struct bpfhv_rxq *rxq = bi->rxqs + i;
+ 		struct bpfhv_rx_context *ctx = rxq->ctx;
+ 		unsigned int count = 0;
+-
++#ifdef DEV_NETMAP
++		if (bpfhv_netmap_rxq_detach(bi, i)) {
++			continue;
++		}
++#endif
+ 		for (;;) {
+ 			int ret;
+ 			int j;
