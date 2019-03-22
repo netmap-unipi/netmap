@@ -140,7 +140,7 @@ bpfhv_netmap_txsync(struct netmap_kring *kring, int flags)
 				break;
 			}
 
-			kick |= (ctx->oflags & BPFHV_OFLAGS_NOTIF_NEEDED);
+			kick |= (ctx->oflags & BPFHV_OFLAGS_KICK_NEEDED);
 			txq->tx_free_bufs --;
 			nm_i = nm_next(nm_i, lim);
 		}
@@ -189,7 +189,7 @@ bpfhv_netmap_rxp(struct netmap_adapter *na, struct bpfhv_rxq *rxq,
 		return ret;
 	}
 	rxq->rx_free_bufs--;
-	*kick |= (ctx->oflags & BPFHV_OFLAGS_NOTIF_NEEDED);
+	*kick |= (ctx->oflags & BPFHV_OFLAGS_KICK_NEEDED);
 
 	return 0;
 }
