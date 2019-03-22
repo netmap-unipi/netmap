@@ -1,5 +1,5 @@
 diff --git a/bpfhv.c/kernel/bpfhv.c b/bpfhv.c/kernel/bpfhv.c
-index 89c338d..2f1b741 100644
+index 89c338d..006ee1c 100644
 --- a/bpfhv.c/kernel/bpfhv.c
 +++ b/bpfhv.c/kernel/bpfhv.c
 @@ -194,6 +194,10 @@ static int		bpfhv_set_features(struct net_device *netdev,
@@ -62,7 +62,23 @@ index 89c338d..2f1b741 100644
  	if (tx_napi) {
  		napi_schedule(&txq->napi);
  	} else {
-@@ -1372,6 +1397,11 @@ bpfhv_resources_alloc(struct bpfhv_info *bi)
+@@ -715,7 +740,15 @@ BPF_CALL_1(bpf_hv_rx_pkt_alloc, struct bpfhv_rx_context *, ctx)
+ 	bool lro = rxq->bi->lro;
+ 	size_t truesize = lro ? PAGE_SIZE : BPFHV_RX_SKB_TRUESIZE;
+ 	int i;
++#ifdef DEV_NETMAP
++	struct netmap_adapter *na = NA(rxq->bi->netdev);
+ 
++	if (nm_native_on(na) &&
++		na->rx_rings[rxq - rxq->bi->rxqs]->nr_mode == NKR_NETMAP_ON) {
++		ctx->packet = (uintptr_t)NULL;
++		return 0;
++	}
++#endif
+ 	if (unlikely(ctx->num_bufs == 0)) {
+ 		return -EINVAL;
+ 	}
+@@ -1372,6 +1405,11 @@ bpfhv_resources_alloc(struct bpfhv_info *bi)
  	for (i = 0; i < bi->num_rx_queues; i++) {
  		struct bpfhv_rxq *rxq = bi->rxqs + i;
  
@@ -74,7 +90,7 @@ index 89c338d..2f1b741 100644
  		ret = bpfhv_rx_refill(rxq, GFP_KERNEL);
  		if (ret) {
  			return ret;
-@@ -1445,6 +1475,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
+@@ -1445,6 +1483,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
  	for (i = 0; i < bi->num_tx_queues; i++) {
  		struct bpfhv_txq *txq = bi->txqs + i;
  		unsigned int count = 0;
@@ -86,7 +102,7 @@ index 89c338d..2f1b741 100644
  
  		for (;;) {
  			int ret;
-@@ -1482,7 +1517,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
+@@ -1482,7 +1525,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
  		struct bpfhv_rxq *rxq = bi->rxqs + i;
  		struct bpfhv_rx_context *ctx = rxq->ctx;
  		unsigned int count = 0;

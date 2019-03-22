@@ -33,19 +33,54 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 	struct ifnet *ifp = na->ifp;
 	struct bpfhv_info *bi = netdev_priv(ifp);
 
+	/* Netmap mode is only allowed without offloads. */
+	if (bpfhv_hv_features(bi) & ~(BPFHV_F_SG)) {
+		nm_prerr("Cannot enable netmap on %s: offloads enabled\n",
+			 na->name);
+		return -EIO;
+	}
+
 	if (netif_running(bi->netdev))
 		bpfhv_close(bi->netdev);
 
-	/* enable or disable flags and callbacks in na and ifp */
+	/* Enable or disable flags and callbacks in na and ifp. */
 	if (onoff) {
 		nm_set_native_flags(na);
 	} else {
 		nm_clear_native_flags(na);
 	}
+
 	if (netif_running(bi->netdev))
 		bpfhv_open(bi->netdev);
 
 	return (0);
+}
+
+static unsigned int
+bpfhv_netmap_tx_clean(struct bpfhv_txq *txq)
+{
+	struct bpfhv_tx_context *ctx = txq->ctx;
+	unsigned int count = 0;
+
+	for (;;) {
+		int ret;
+
+		ret = BPF_PROG_RUN(txq->bi->progs[BPFHV_PROG_TX_RECLAIM],
+				/*ctx=*/ctx);
+		if (ret <= 0) {
+			if (ret < 0) {
+				nm_prerr("netmap tx reclaim failed\n");
+			} else {
+				/* No more buffers to reclaim. */
+			}
+			break;
+		}
+
+		txq->tx_free_bufs += ctx->num_bufs;
+		count += ctx->num_bufs;
+	}
+
+	return count;
 }
 
 /*
@@ -54,6 +89,108 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 static int
 bpfhv_netmap_txsync(struct netmap_kring *kring, int flags)
 {
+	struct netmap_adapter *na = kring->na;
+	struct ifnet *ifp = na->ifp;
+	struct netmap_ring *ring = kring->ring;
+	u_int ring_nr = kring->ring_id;
+	u_int nm_i;	/* index into the netmap ring */
+	u_int n;
+	u_int const lim = kring->nkr_num_slots - 1;
+	u_int const head = kring->rhead;
+
+	/* device-specific */
+	struct bpfhv_info *bi = netdev_priv(ifp);
+	struct bpfhv_txq *txq = bi->txqs + ring_nr;
+	struct bpfhv_tx_context *ctx = txq->ctx;
+
+	/*
+	 * First part: process new packets to send.
+	 */
+
+	if (!netif_carrier_ok(ifp)) {
+		return 0;
+	}
+
+	nm_i = kring->nr_hwcur;
+	if (nm_i != head) {	/* we have new packets to send */
+		bool kick = false;
+
+		for (n = 0; nm_i != head; n++) {
+			struct netmap_slot *slot = &ring->slot[nm_i];
+			u_int len = slot->len;
+			uint64_t paddr;
+			void *addr = PNMB(na, slot, &paddr);
+
+			/* device-specific */
+			int ret;
+
+			NM_CHECK_ADDR_LEN(na, addr, len);
+
+			ctx->packet = (uintptr_t)slot;
+			ctx->bufs[0].paddr = (uintptr_t)paddr;
+			ctx->bufs[0].vaddr = (uintptr_t)addr;
+			ctx->bufs[0].len = len;
+			ctx->bufs[0].cookie = (uintptr_t)slot;
+			ctx->num_bufs = 1;
+			slot->flags &= ~(NS_REPORT | NS_BUF_CHANGED | NS_MOREFRAG);
+
+			ret = BPF_PROG_RUN(bi->progs[BPFHV_PROG_TX_PUBLISH], /*ctx=*/ctx);
+			if (ret) {
+				nm_prerr("netmap txp failed --> %d\n", ret);
+				break;
+			}
+
+			kick |= (ctx->oflags & BPFHV_OFLAGS_NOTIF_NEEDED);
+			txq->tx_free_bufs --;
+			nm_i = nm_next(nm_i, lim);
+		}
+		kring->nr_hwcur = nm_i;
+		if (kick) {
+			writel(0, txq->doorbell);
+		}
+	}
+
+	/*
+	 * Second part: reclaim buffers for completed transmissions.
+	 */
+	if (flags & NAF_FORCE_RECLAIM || nm_kr_txempty(kring)) {
+		unsigned int count = bpfhv_netmap_tx_clean(txq);
+
+		kring->nr_hwtail += count;
+		if (kring->nr_hwtail >= kring->nkr_num_slots) {
+			kring->nr_hwtail -= kring->nkr_num_slots;
+		}
+	}
+
+	return 0;
+}
+
+static int
+bpfhv_netmap_rxp(struct netmap_adapter *na, struct bpfhv_rxq *rxq,
+		 struct netmap_slot *slot, bool *kick)
+{
+	/* Prepare the context for publishing receive buffers. */
+	struct bpfhv_rx_context *ctx = rxq->ctx;
+	struct bpfhv_rx_buf *rxb = ctx->bufs + 0;
+	dma_addr_t dma;
+	void *kbuf;
+	int ret;
+
+	kbuf = PNMB(na, slot, &dma);
+	rxb->cookie = (uintptr_t)(slot);
+	rxb->paddr = (uintptr_t)dma;
+	rxb->vaddr = (uintptr_t)kbuf;
+	rxb->len = NETMAP_BUF_SIZE(na);
+	ctx->num_bufs = 1;
+
+	ret = BPF_PROG_RUN(rxq->bi->progs[BPFHV_PROG_RX_PUBLISH], /*ctx=*/ctx);
+	if (unlikely(ret)) {
+		nm_prerr("Failed to publish netmap RX buf\n");
+		return ret;
+	}
+	rxq->rx_free_bufs--;
+	*kick |= (ctx->oflags & BPFHV_OFLAGS_NOTIF_NEEDED);
+
 	return 0;
 }
 
@@ -63,37 +200,192 @@ bpfhv_netmap_txsync(struct netmap_kring *kring, int flags)
 static int
 bpfhv_netmap_rxsync(struct netmap_kring *kring, int flags)
 {
+	struct netmap_adapter *na = kring->na;
+	struct ifnet *ifp = na->ifp;
+	struct netmap_ring *ring = kring->ring;
+	u_int ring_nr = kring->ring_id;
+	u_int nm_i;	/* index into the netmap ring */
+	u_int n;
+	u_int const lim = kring->nkr_num_slots - 1;
+	u_int const head = kring->rhead;
+	int force_update = (flags & NAF_FORCE_READ) || kring->nr_kflags & NKR_PENDINTR;
+
+	/* device-specific */
+	struct bpfhv_info *bi = netdev_priv(ifp);
+	struct bpfhv_rxq *rxq = bi->rxqs + ring_nr;
+	struct bpfhv_rx_context *ctx = rxq->ctx;
+
+	if (!netif_carrier_ok(ifp)) {
+		return 0;
+	}
+
+	if (head > lim)
+		return netmap_ring_reinit(kring);
+
+	/*
+	 * First part: import newly received packets.
+	 */
+	if (netmap_no_pendintr || force_update) {
+		int ret;
+
+		for (nm_i = kring->nr_hwtail;;) {
+			struct netmap_slot *slot;
+			unsigned int j;
+
+			ret = BPF_PROG_RUN(bi->progs[BPFHV_PROG_RX_COMPLETE],
+					/*ctx=*/ctx);
+			if (ret == 0) {
+				/* No more received packets. */
+				break;
+			}
+			if (unlikely(ret < 0)) {
+				nm_prerr("netmap rxc failed --> %d\n", ret);
+				break;
+			}
+			rxq->rx_free_bufs += ctx->num_bufs;
+
+			for (j = 0; j < ctx->num_bufs; j++) {
+				slot = ring->slot + nm_i;
+				slot->len = ctx->bufs[j].len;
+				slot->flags = NS_MOREFRAG;
+				nm_i = nm_next(nm_i, lim);
+			}
+			if (j) {
+				slot->flags = 0;
+			}
+		}
+		kring->nr_hwtail = nm_i;
+		kring->nr_kflags &= ~NKR_PENDINTR;
+	}
+
+	/*
+	 * Second part: skip past packets that userspace has released.
+	 */
+	nm_i = kring->nr_hwcur;
+	if (nm_i != head) {
+		bool kick = false;
+
+		for (n = 0; nm_i != head; n++) {
+			if (bpfhv_netmap_rxp(na, rxq, ring->slot + nm_i, &kick)) {
+				break;
+			}
+			nm_i = nm_next(nm_i, lim);
+		}
+		kring->nr_hwcur = nm_i;
+		if (kick) {
+			writel(0, rxq->doorbell);
+		}
+	}
+
 	return 0;
 }
-
 
 static int
 bpfhv_netmap_rxq_attach(struct bpfhv_info *bi, unsigned int r)
 {
-	return 0;
+	struct netmap_adapter *na = NA(bi->netdev);
+	struct bpfhv_rxq *rxq = bi->rxqs + r;
+	struct netmap_slot *slots;
+	unsigned int nm_i;
+
+	slots = netmap_reset(na, NR_RX, r, 0);
+	if (!slots) {
+		return 0;
+	}
+
+	BUG_ON(rxq->rx_free_bufs != bi->rx_bufs);
+
+	for (nm_i = 0; rxq->rx_free_bufs > 0; nm_i++) {
+		bool kick = false;
+
+		if (bpfhv_netmap_rxp(na, rxq, slots + nm_i, &kick)) {
+			break;
+		}
+	}
+
+	writel(0, rxq->doorbell);
+
+	return 1;
 }
 
 static int
 bpfhv_netmap_rxq_detach(struct bpfhv_info *bi, unsigned int r)
 {
-	return 0;
+	struct netmap_adapter *na = NA(bi->netdev);
+	struct bpfhv_rxq *rxq = bi->rxqs + r;
+	struct bpfhv_rx_context *ctx = rxq->ctx;
+	struct netmap_slot *slots;
+	unsigned int count = 0;
+
+	slots = netmap_reset(na, NR_RX, r, 0);
+	if (!slots) {
+		return 0;
+	}
+
+	for (;;) {
+		int ret;
+
+		ret = BPF_PROG_RUN(bi->progs[BPFHV_PROG_RX_RECLAIM],
+				/*ctx=*/ctx);
+		if (ret == 0) {
+			/* No more buffers to reclaim. */
+			break;
+		} else if (ret < 0) {
+			nm_prerr("netmap rx reclaim failed\n");
+			break;
+		}
+
+		rxq->rx_free_bufs += ctx->num_bufs;
+		count += ctx->num_bufs;
+	}
+
+	if (count) {
+		nm_prinf("netmap reclaimed %u rx buffers\n", count);
+	}
+
+	if (rxq->rx_free_bufs != bi->rx_bufs) {
+		nm_prinf("netmap failed to reclaim %u rx buffers\n",
+				(int)bi->rx_bufs - (int)rxq->rx_free_bufs);
+	}
+
+	return 1;
 }
 
 static int
 bpfhv_netmap_txq_detach(struct bpfhv_info *bi, unsigned int r)
 {
-	return 0;
+	struct netmap_adapter *na = NA(bi->netdev);
+	struct bpfhv_txq *txq = bi->txqs + r;
+	struct netmap_slot *slots;
+	unsigned int count;
+
+	slots = netmap_reset(na, NR_TX, r, 0);
+	if (!slots) {
+		return 0;
+	}
+
+	count = bpfhv_netmap_tx_clean(txq);
+	if (count) {
+		nm_prinf("netmap reclaimed %u tx buffers\n", count);
+	}
+
+	if (txq->tx_free_bufs != bi->tx_bufs) {
+		nm_prinf("netmap failed to reclaim %u tx buffers\n",
+				(int)bi->tx_bufs - (int)txq->tx_free_bufs);
+	}
+
+	return 1;
 }
 
 static int
 bpfhv_netmap_config(struct netmap_adapter *na, struct nm_config_info *info)
 {
-	int ret = netmap_rings_config_get(na, info);
+	struct bpfhv_info *bi = netdev_priv(na->ifp);
 
-	if (ret) {
-		return ret;
-	}
-
+	info->num_tx_descs = bi->tx_bufs;
+	info->num_rx_descs = bi->rx_bufs;
+	info->num_tx_rings = bi->num_tx_queues;
+	info->num_rx_rings = bi->num_rx_queues;
 	info->rx_buf_maxsize = PAGE_SIZE;
 
 	return 0;
