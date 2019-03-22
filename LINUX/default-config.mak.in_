@@ -122,7 +122,7 @@ endef
 $(foreach d,$(filter virtio_net.c,$(E_DRIVERS)),$(eval $(call virtio_net)))
 
 define bpfhv
-bpfhv.c@fetch	:= test -e @SRCDIR@/ext-drivers/bpfhv.c || (git clone ~/git/bpfhv/ @SRCDIR@/ext-drivers/bpfhv.c && rm -rf @SRCDIR@/ext-drivers/bpfhv.c/.git)
+bpfhv.c@fetch	:= test -e @SRCDIR@/ext-drivers/bpfhv.c || (git clone -b master ~/git/bpfhv/ @SRCDIR@/ext-drivers/bpfhv.c && rm -rf @SRCDIR@/ext-drivers/bpfhv.c/.git)
 bpfhv.c@src	:= cp -r @SRCDIR@/ext-drivers/bpfhv.c/ bpfhv.c && ( test -L bpfhv.c/kernel/bpfhv_src.c || (cd bpfhv.c/kernel/ && ln -s bpfhv.c bpfhv_src.c ) )
 bpfhv.c@patch	:= patches/custom--bpfhv.c--5.0
 bpfhv.c@prepare	:=
