@@ -1,5 +1,5 @@
 diff --git a/bpfhv.c/kernel/bpfhv.c b/bpfhv.c/kernel/bpfhv.c
-index c69c2c4..7fadd2a 100644
+index c69c2c4..cf9ea3e 100644
 --- a/bpfhv.c/kernel/bpfhv.c
 +++ b/bpfhv.c/kernel/bpfhv.c
 @@ -196,6 +196,10 @@ static int		bpfhv_set_features(struct net_device *netdev,
@@ -39,7 +39,7 @@ index c69c2c4..7fadd2a 100644
  {
  	struct bpfhv_rxq *rxq = data;
 +#ifdef DEV_NETMAP
-+	int nm_irq = netmap_rx_irq(rxq->bi->netdev, rxq - rxq->bi->rxqs, &irq);
++	int nm_irq = netmap_rx_irq(rxq->bi->netdev, rxq->idx, &irq);
 +
 +	if (nm_irq != NM_IRQ_PASS) {
 +		return 1;
@@ -53,7 +53,7 @@ index c69c2c4..7fadd2a 100644
  	struct bpfhv_txq *txq = data;
  
 +#ifdef DEV_NETMAP
-+	if (netmap_tx_irq(txq->bi->netdev, txq - txq->bi->txqs)
++	if (netmap_tx_irq(txq->bi->netdev, txq->idx)
 +			!= NM_IRQ_PASS) {
 +		return 1; /* cleaned ok */
 +	}
@@ -70,7 +70,7 @@ index c69c2c4..7fadd2a 100644
 +	struct netmap_adapter *na = NA(rxq->bi->netdev);
  
 +	if (nm_native_on(na) &&
-+		na->rx_rings[rxq - rxq->bi->rxqs]->nr_mode == NKR_NETMAP_ON) {
++		na->rx_rings[rxq->idx]->nr_mode == NKR_NETMAP_ON) {
 +		ctx->packet = (uintptr_t)NULL;
 +		return 0;
 +	}
