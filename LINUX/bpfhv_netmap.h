@@ -102,6 +102,7 @@ bpfhv_netmap_txsync(struct netmap_kring *kring, int flags)
 	struct bpfhv_info *bi = netdev_priv(ifp);
 	struct bpfhv_txq *txq = bi->txqs + ring_nr;
 	struct bpfhv_tx_context *ctx = txq->ctx;
+	unsigned int count;
 
 	/*
 	 * First part: process new packets to send.
@@ -153,9 +154,8 @@ bpfhv_netmap_txsync(struct netmap_kring *kring, int flags)
 	/*
 	 * Second part: reclaim buffers for completed transmissions.
 	 */
-	if (flags & NAF_FORCE_RECLAIM || nm_kr_txempty(kring)) {
-		unsigned int count = bpfhv_netmap_tx_clean(txq);
-
+	count = bpfhv_netmap_tx_clean(txq);
+	if (count > 0) {
 		kring->nr_hwtail += count;
 		if (kring->nr_hwtail >= kring->nkr_num_slots) {
 			kring->nr_hwtail -= kring->nkr_num_slots;
