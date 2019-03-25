@@ -112,7 +112,7 @@ subsys enable null
 subsys enable ptnetmap
 
 # available drivers
-driver_avail="r8169.c virtio_net.c forcedeth.c veth.c bpfhv.c \
+driver_avail="r8169.c virtio_net.c forcedeth.c veth.c bpfhv \
 	e1000 e1000e igb ixgbe ixgbevf i40e vmxnet3 mlx5"
 # enabled drivers (bitfield)
 driver=
@@ -137,7 +137,7 @@ edrv enable ixgbevf
 edrv enable i40e
 edrv enable mlx5
 edrv enable virtio_net.c
-edrv enable bpfhv.c
+edrv enable bpfhv
 
 # drivers built by patching the system drivers
 setop internal_driver new driver

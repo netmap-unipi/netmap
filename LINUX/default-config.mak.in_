@@ -122,15 +122,15 @@ endef
 $(foreach d,$(filter virtio_net.c,$(E_DRIVERS)),$(eval $(call virtio_net)))
 
 define bpfhv
-bpfhv.c@fetch	:= test -e @SRCDIR@/ext-drivers/bpfhv.c || (git clone -b master git@lettieri.iet.unipi.it:vincenzo/bpfhv @SRCDIR@/ext-drivers/bpfhv.c && rm -rf @SRCDIR@/ext-drivers/bpfhv.c/.git)
-bpfhv.c@src	:= cp -r @SRCDIR@/ext-drivers/bpfhv.c/ bpfhv.c && ( test -L bpfhv.c/kernel/bpfhv_src.c || (cd bpfhv.c/kernel/ && ln -s bpfhv.c bpfhv_src.c ) )
-bpfhv.c@patch	:= patches/custom--bpfhv.c--5.0
-bpfhv.c@prepare	:=
-bpfhv.c@build 	:= [ -z "$(EXTRA_CFLAGS)" ] || (bpfhv.c/configure && make -C bpfhv.c EXTRA_CFLAGS="$(EXTRA_CFLAGS)" @KOPTS@ NETMAP_DRIVER_SUFFIX=@DRVSUFFIX@ KSRC=@KSRC@ ker)
-bpfhv.c@install 	:= make -C bpfhv.c install INSTALL_MOD_PATH=@MODPATH@ EXTRA_CFLAGS="$(EXTRA_CFLAGS)" NETMAP_DRIVER_SUFFIX=@DRVSUFFIX@ KSRC=@KSRC@
-bpfhv.c@clean 	:= if [ -d bpfhv.c ]; then make -C bpfhv.c clean EXTRA_CFLAGS="$(EXTRA_CFLAGS)" NETMAP_DRIVER_SUFFIX=@DRVSUFFIX@ KSRC=@KSRC@; fi
-bpfhv.c@distclean	:=
-bpfhv.c@force	:= 1
+bpfhv@fetch	:= test -e @SRCDIR@/ext-drivers/bpfhv || (git clone -b master git@lettieri.iet.unipi.it:vincenzo/bpfhv @SRCDIR@/ext-drivers/bpfhv && rm -rf @SRCDIR@/ext-drivers/bpfhv/.git)
+bpfhv@src	:= cp -r @SRCDIR@/ext-drivers/bpfhv/ bpfhv && ( test -L bpfhv/kernel/bpfhv_src.c || (cd bpfhv/kernel/ && ln -s bpfhv bpfhv_src.c ) )
+bpfhv@patch	:= patches/custom--bpfhv--5.0
+bpfhv@prepare	:=
+bpfhv@build 	:= [ -z "$(EXTRA_CFLAGS)" ] || (bpfhv/configure && make -C bpfhv EXTRA_CFLAGS="$(EXTRA_CFLAGS)" @KOPTS@ NETMAP_DRIVER_SUFFIX=@DRVSUFFIX@ KSRC=@KSRC@ ker)
+bpfhv@install 	:= make -C bpfhv install INSTALL_MOD_PATH=@MODPATH@ EXTRA_CFLAGS="$(EXTRA_CFLAGS)" NETMAP_DRIVER_SUFFIX=@DRVSUFFIX@ KSRC=@KSRC@
+bpfhv@clean 	:= if [ -d bpfhv ]; then make -C bpfhv clean EXTRA_CFLAGS="$(EXTRA_CFLAGS)" NETMAP_DRIVER_SUFFIX=@DRVSUFFIX@ KSRC=@KSRC@; fi
+bpfhv@distclean	:=
+bpfhv@force	:= 1
 endef
 
-$(foreach d,$(filter bpfhv.c,$(E_DRIVERS)),$(eval $(call bpfhv)))
+$(foreach d,$(filter bpfhv,$(E_DRIVERS)),$(eval $(call bpfhv)))

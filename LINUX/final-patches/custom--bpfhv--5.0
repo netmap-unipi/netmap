@@ -1,7 +1,7 @@
-diff --git a/bpfhv.c/kernel/bpfhv.c b/bpfhv.c/kernel/bpfhv.c
+diff --git a/bpfhv/kernel/bpfhv b/bpfhv/kernel/bpfhv.c
 index c69c2c4..cf9ea3e 100644
---- a/bpfhv.c/kernel/bpfhv.c
-+++ b/bpfhv.c/kernel/bpfhv.c
+--- a/bpfhv/kernel/bpfhv.c
++++ b/bpfhv/kernel/bpfhv.c
 @@ -196,6 +196,10 @@ static int		bpfhv_set_features(struct net_device *netdev,
  static void		bpfhv_get_drvinfo(struct net_device *netdev,
  					  struct ethtool_drvinfo *drvinfo);
