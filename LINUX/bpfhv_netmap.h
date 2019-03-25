@@ -314,11 +314,12 @@ bpfhv_netmap_rxq_detach(struct bpfhv_info *bi, unsigned int r)
 	struct netmap_adapter *na = NA(bi->netdev);
 	struct bpfhv_rxq *rxq = bi->rxqs + r;
 	struct bpfhv_rx_context *ctx = rxq->ctx;
-	struct netmap_slot *slots;
+	bool kring_on = nm_native_on(na) &&
+		(na->rx_rings[r]->nr_mode == NKR_NETMAP_ON);
 	unsigned int count = 0;
 
-	slots = netmap_reset(na, NR_RX, r, 0);
-	if (!slots) {
+	netmap_reset(na, NR_RX, r, 0);
+	if (!kring_on) {
 		return 0;
 	}
 
@@ -356,11 +357,12 @@ bpfhv_netmap_txq_detach(struct bpfhv_info *bi, unsigned int r)
 {
 	struct netmap_adapter *na = NA(bi->netdev);
 	struct bpfhv_txq *txq = bi->txqs + r;
-	struct netmap_slot *slots;
+	bool kring_on = nm_native_on(na) &&
+		(na->tx_rings[r]->nr_mode == NKR_NETMAP_ON);
 	unsigned int count;
 
-	slots = netmap_reset(na, NR_TX, r, 0);
-	if (!slots) {
+	netmap_reset(na, NR_TX, r, 0);
+	if (!kring_on) {
 		return 0;
 	}
 
