@@ -57,7 +57,7 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 }
 
 static unsigned int
-bpfhv_netmap_tx_clean(struct bpfhv_txq *txq)
+bpfhv_netmap_tx_clean(struct bpfhv_txq *txq, unsigned int progid)
 {
 	struct bpfhv_tx_context *ctx = txq->ctx;
 	unsigned int count = 0;
@@ -65,7 +65,7 @@ bpfhv_netmap_tx_clean(struct bpfhv_txq *txq)
 	for (;;) {
 		int ret;
 
-		ret = BPF_PROG_RUN(txq->bi->progs[BPFHV_PROG_TX_RECLAIM],
+		ret = BPF_PROG_RUN(txq->bi->progs[progid],
 				/*ctx=*/ctx);
 		if (ret <= 0) {
 			if (ret < 0) {
@@ -154,7 +154,7 @@ bpfhv_netmap_txsync(struct netmap_kring *kring, int flags)
 	/*
 	 * Second part: reclaim buffers for completed transmissions.
 	 */
-	count = bpfhv_netmap_tx_clean(txq);
+	count = bpfhv_netmap_tx_clean(txq, BPFHV_PROG_TX_COMPLETE);
 	if (count > 0) {
 		kring->nr_hwtail += count;
 		if (kring->nr_hwtail >= kring->nkr_num_slots) {
@@ -366,7 +366,7 @@ bpfhv_netmap_txq_detach(struct bpfhv_info *bi, unsigned int r)
 		return 0;
 	}
 
-	count = bpfhv_netmap_tx_clean(txq);
+	count = bpfhv_netmap_tx_clean(txq, BPFHV_PROG_TX_RECLAIM);
 	if (count) {
 		nm_prinf("netmap reclaimed %u tx buffers\n", count);
 	}
