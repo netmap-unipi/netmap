@@ -94,7 +94,6 @@ bpfhv_netmap_txsync(struct netmap_kring *kring, int flags)
 	struct netmap_ring *ring = kring->ring;
 	u_int ring_nr = kring->ring_id;
 	u_int nm_i;	/* index into the netmap ring */
-	u_int n;
 	u_int const lim = kring->nkr_num_slots - 1;
 	u_int const head = kring->rhead;
 
@@ -116,7 +115,7 @@ bpfhv_netmap_txsync(struct netmap_kring *kring, int flags)
 	if (nm_i != head) {	/* we have new packets to send */
 		bool kick = false;
 
-		for (n = 0; nm_i != head; n++) {
+		for (; nm_i != head && txq->tx_free_bufs > 0; ) {
 			struct netmap_slot *slot = &ring->slot[nm_i];
 			u_int len = slot->len;
 			uint64_t paddr;
