@@ -32,6 +32,8 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 {
 	struct ifnet *ifp = na->ifp;
 	struct bpfhv_info *bi = netdev_priv(ifp);
+	unsigned int i;
+	enum txrx t;
 
 	/* Netmap mode is only allowed without offloads. */
 	if (bpfhv_hv_features(bi) & ~(BPFHV_F_SG)) {
@@ -46,7 +48,27 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 	/* Enable or disable flags and callbacks in na and ifp. */
 	if (onoff) {
 		nm_set_native_flags(na);
+		for_rx_tx(t) {
+			/* Hardware rings. */
+			for (i = 0; i < nma_get_nrings(na, t); i++) {
+				struct netmap_kring *kring = NMR(na, t)[i];
+
+				if (!nm_kring_pending_on(kring))
+					continue;
+				kring->nr_mode = NKR_NETMAP_ON;
+			}
+		}
 	} else {
+		for_rx_tx(t) {
+			/* Hardware rings. */
+			for (i = 0; i < nma_get_nrings(na, t); i++) {
+				struct netmap_kring *kring = NMR(na, t)[i];
+
+				if (!nm_kring_pending_off(kring))
+					continue;
+				kring->nr_mode = NKR_NETMAP_OFF;
+			}
+		}
 		nm_clear_native_flags(na);
 	}
 
@@ -279,6 +301,20 @@ bpfhv_netmap_rxsync(struct netmap_kring *kring, int flags)
 	return 0;
 }
 
+static bool
+bpfhv_netmap_kring_on(struct bpfhv_info *bi, enum txrx t, unsigned int r)
+{
+	struct netmap_adapter *na = NA(bi->netdev);
+	struct netmap_kring **krings;
+
+	if (!nm_native_on(na)) {
+		return false;
+	}
+	krings = (t == NR_RX) ? na->rx_rings : na->tx_rings;
+
+	return krings[r]->nr_mode == NKR_NETMAP_ON;
+}
+
 static int
 bpfhv_netmap_rxq_attach(struct bpfhv_info *bi, unsigned int r)
 {
@@ -287,10 +323,10 @@ bpfhv_netmap_rxq_attach(struct bpfhv_info *bi, unsigned int r)
 	struct netmap_slot *slots;
 	unsigned int nm_i;
 
-	slots = netmap_reset(na, NR_RX, r, 0);
-	if (!slots) {
+	if (!bpfhv_netmap_kring_on(bi, NR_RX, r)) {
 		return 0;
 	}
+	slots = na->rx_rings[r]->ring->slot;
 
 	BUG_ON(rxq->rx_free_bufs != bi->rx_bufs);
 
@@ -310,15 +346,11 @@ bpfhv_netmap_rxq_attach(struct bpfhv_info *bi, unsigned int r)
 static int
 bpfhv_netmap_rxq_detach(struct bpfhv_info *bi, unsigned int r)
 {
-	struct netmap_adapter *na = NA(bi->netdev);
 	struct bpfhv_rxq *rxq = bi->rxqs + r;
 	struct bpfhv_rx_context *ctx = rxq->ctx;
-	bool kring_on = nm_native_on(na) &&
-		(na->rx_rings[r]->nr_mode == NKR_NETMAP_ON);
 	unsigned int count = 0;
 
-	netmap_reset(na, NR_RX, r, 0);
-	if (!kring_on) {
+	if (!bpfhv_netmap_kring_on(bi, NR_RX, r)) {
 		return 0;
 	}
 
@@ -354,14 +386,10 @@ bpfhv_netmap_rxq_detach(struct bpfhv_info *bi, unsigned int r)
 static int
 bpfhv_netmap_txq_detach(struct bpfhv_info *bi, unsigned int r)
 {
-	struct netmap_adapter *na = NA(bi->netdev);
 	struct bpfhv_txq *txq = bi->txqs + r;
-	bool kring_on = nm_native_on(na) &&
-		(na->tx_rings[r]->nr_mode == NKR_NETMAP_ON);
 	unsigned int count;
 
-	netmap_reset(na, NR_TX, r, 0);
-	if (!kring_on) {
+	if (!bpfhv_netmap_kring_on(bi, NR_TX, r)) {
 		return 0;
 	}
 
