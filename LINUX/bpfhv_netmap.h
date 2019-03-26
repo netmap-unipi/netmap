@@ -56,6 +56,7 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 				if (!nm_kring_pending_on(kring))
 					continue;
 				kring->nr_mode = NKR_NETMAP_ON;
+				nm_prinf("kring %s goes on", kring->name);
 			}
 		}
 	} else {
@@ -67,6 +68,7 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 				if (!nm_kring_pending_off(kring))
 					continue;
 				kring->nr_mode = NKR_NETMAP_OFF;
+				nm_prinf("kring %s goes off", kring->name);
 			}
 		}
 		nm_clear_native_flags(na);
