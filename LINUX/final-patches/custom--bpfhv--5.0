@@ -1,5 +1,5 @@
-diff --git a/bpfhv/kernel/bpfhv b/bpfhv/kernel/bpfhv.c
-index c69c2c4..cf9ea3e 100644
+diff --git a/bpfhv/kernel/bpfhv.c b/bpfhv/kernel/bpfhv.c
+index c69c2c4..77cd994 100644
 --- a/bpfhv/kernel/bpfhv.c
 +++ b/bpfhv/kernel/bpfhv.c
 @@ -196,6 +196,10 @@ static int		bpfhv_set_features(struct net_device *netdev,
@@ -90,7 +90,33 @@ index c69c2c4..cf9ea3e 100644
  		ret = bpfhv_rx_refill(rxq, GFP_KERNEL);
  		if (ret) {
  			return ret;
-@@ -1449,6 +1487,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
+@@ -1410,6 +1448,12 @@ bpfhv_close(struct net_device *netdev)
+ 		/* The BPFHV_CTRL_TX_DISABLE command above may have
+ 		 * triggered synchronous transmission of some pending
+ 		 * buffers. Clean up just in case. */
++#ifdef DEV_NETMAP
++		if (nm_native_on(NA(netdev)) &&
++			NA(netdev)->tx_rings[i]->nr_mode == NKR_NETMAP_ON) {
++			continue;
++		}
++#endif
+ 		bpfhv_tx_clean(txq, /*in_napi=*/false);
+ 	}
+ 
+@@ -1429,6 +1473,12 @@ bpfhv_close(struct net_device *netdev)
+ 		/* There may still be pending receive buffers,
+ 		 * since we stopped NAPI from rescheduling.
+ 		 * Process them if any. */
++#ifdef DEV_NETMAP
++		if (nm_native_on(NA(netdev)) &&
++			NA(netdev)->rx_rings[i]->nr_mode == NKR_NETMAP_ON) {
++			continue;
++		}
++#endif
+ 		bpfhv_rx_clean(rxq, bi->rx_bufs);
+ 	}
+ 
+@@ -1449,6 +1499,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
  	for (i = 0; i < bi->num_tx_queues; i++) {
  		struct bpfhv_txq *txq = bi->txqs + i;
  		unsigned int count = 0;
@@ -102,7 +128,7 @@ index c69c2c4..cf9ea3e 100644
  
  		for (;;) {
  			int ret;
-@@ -1486,7 +1529,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
+@@ -1486,7 +1541,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
  		struct bpfhv_rxq *rxq = bi->rxqs + i;
  		struct bpfhv_rx_context *ctx = rxq->ctx;
  		unsigned int count = 0;
