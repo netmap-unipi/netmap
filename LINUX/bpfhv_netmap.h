@@ -36,7 +36,7 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 	enum txrx t;
 
 	/* Netmap mode is only allowed without offloads. */
-	if (bpfhv_hv_features(bi) & ~(BPFHV_F_SG)) {
+	if (onoff && (bpfhv_hv_features(bi) & ~(BPFHV_F_SG))) {
 		nm_prerr("Cannot enable netmap on %s: offloads enabled\n",
 			 na->name);
 		return -EIO;
@@ -183,6 +183,11 @@ bpfhv_netmap_txsync(struct netmap_kring *kring, int flags)
 		if (kring->nr_hwtail >= kring->nkr_num_slots) {
 			kring->nr_hwtail -= kring->nkr_num_slots;
 		}
+	}
+
+	if (txq->tx_free_bufs < bi->tx_bufs / 2) {
+		ctx->min_completed_bufs = (bi->tx_bufs - txq->tx_free_bufs);
+		BPF_PROG_RUN(bi->progs[BPFHV_PROG_TX_INTRS], ctx);
 	}
 
 	return 0;
