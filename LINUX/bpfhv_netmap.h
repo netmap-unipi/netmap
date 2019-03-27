@@ -37,7 +37,7 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 
 	/* Netmap mode is only allowed without offloads. */
 	if (onoff && (bpfhv_hv_features(bi) & ~(BPFHV_F_SG))) {
-		nm_prerr("Cannot enable netmap on %s: offloads enabled\n",
+		nm_prerr("Cannot enable netmap on %s: offloads enabled",
 			 na->name);
 		return -EIO;
 	}
@@ -93,7 +93,7 @@ bpfhv_netmap_tx_clean(struct bpfhv_txq *txq, unsigned int progid)
 				/*ctx=*/ctx);
 		if (ret <= 0) {
 			if (ret < 0) {
-				nm_prerr("netmap tx reclaim failed\n");
+				nm_prerr("netmap tx reclaim failed");
 			} else {
 				/* No more buffers to reclaim. */
 			}
@@ -160,7 +160,7 @@ bpfhv_netmap_txsync(struct netmap_kring *kring, int flags)
 
 			ret = BPF_PROG_RUN(bi->progs[BPFHV_PROG_TX_PUBLISH], /*ctx=*/ctx);
 			if (ret) {
-				nm_prerr("netmap txp failed --> %d\n", ret);
+				nm_prerr("netmap txp failed --> %d", ret);
 				break;
 			}
 
@@ -213,7 +213,7 @@ bpfhv_netmap_rxp(struct netmap_adapter *na, struct bpfhv_rxq *rxq,
 
 	ret = BPF_PROG_RUN(rxq->bi->progs[BPFHV_PROG_RX_PUBLISH], /*ctx=*/ctx);
 	if (unlikely(ret)) {
-		nm_prerr("Failed to publish netmap RX buf\n");
+		nm_prerr("Failed to publish netmap RX buf");
 		return ret;
 	}
 	rxq->rx_free_bufs--;
@@ -264,7 +264,7 @@ bpfhv_netmap_rxsync(struct netmap_kring *kring, int flags)
 				break;
 			}
 			if (unlikely(ret < 0)) {
-				nm_prerr("netmap rxc failed --> %d\n", ret);
+				nm_prerr("netmap rxc failed --> %d", ret);
 				break;
 			}
 			rxq->rx_free_bufs += ctx->num_bufs;
@@ -363,7 +363,7 @@ bpfhv_netmap_rxq_detach(struct bpfhv_info *bi, unsigned int r)
 			/* No more buffers to reclaim. */
 			break;
 		} else if (ret < 0) {
-			nm_prerr("netmap rx reclaim failed\n");
+			nm_prerr("netmap rx reclaim failed");
 			break;
 		}
 

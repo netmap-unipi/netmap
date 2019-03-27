@@ -1,5 +1,5 @@
 diff --git a/bpfhv/kernel/bpfhv.c b/bpfhv/kernel/bpfhv.c
-index c69c2c4..77cd994 100644
+index c69c2c4..40818ea 100644
 --- a/bpfhv/kernel/bpfhv.c
 +++ b/bpfhv/kernel/bpfhv.c
 @@ -196,6 +196,10 @@ static int		bpfhv_set_features(struct net_device *netdev,
@@ -42,7 +42,7 @@ index c69c2c4..77cd994 100644
 +	int nm_irq = netmap_rx_irq(rxq->bi->netdev, rxq->idx, &irq);
 +
 +	if (nm_irq != NM_IRQ_PASS) {
-+		return 1;
++		return IRQ_HANDLED;
 +	}
 +#endif /* DEV_NETMAP */
  
@@ -55,22 +55,20 @@ index c69c2c4..77cd994 100644
 +#ifdef DEV_NETMAP
 +	if (netmap_tx_irq(txq->bi->netdev, txq->idx)
 +			!= NM_IRQ_PASS) {
-+		return 1; /* cleaned ok */
++		return IRQ_HANDLED;
 +	}
 +#endif /* DEV_NETMAP */
 +
  	if (tx_napi) {
  		napi_schedule(&txq->napi);
  	} else {
-@@ -719,7 +744,15 @@ BPF_CALL_1(bpf_hv_rx_pkt_alloc, struct bpfhv_rx_context *, ctx)
+@@ -719,7 +744,12 @@ BPF_CALL_1(bpf_hv_rx_pkt_alloc, struct bpfhv_rx_context *, ctx)
  	bool lro = rxq->bi->lro;
  	size_t truesize = lro ? PAGE_SIZE : BPFHV_RX_SKB_TRUESIZE;
  	int i;
+-
 +#ifdef DEV_NETMAP
-+	struct netmap_adapter *na = NA(rxq->bi->netdev);
- 
-+	if (nm_native_on(na) &&
-+		na->rx_rings[rxq->idx]->nr_mode == NKR_NETMAP_ON) {
++	if (bpfhv_netmap_kring_on(rxq->bi, NR_RX, rxq->idx)) {
 +		ctx->packet = (uintptr_t)NULL;
 +		return 0;
 +	}
@@ -78,7 +76,61 @@ index c69c2c4..77cd994 100644
  	if (unlikely(ctx->num_bufs == 0)) {
  		return -EINVAL;
  	}
-@@ -1376,6 +1409,11 @@ bpfhv_resources_alloc(struct bpfhv_info *bi)
+@@ -808,7 +838,12 @@ BPF_CALL_3(bpf_hv_pkt_l4_csum_md_get, struct bpfhv_tx_context *, ctx,
+ 	   uint16_t *, csum_start, uint16_t *, csum_offset)
+ {
+ 	struct sk_buff *skb = (struct sk_buff *)(uintptr_t)ctx->packet;
+-
++#ifdef DEV_NETMAP
++	struct bpfhv_txq *txq = TXQ_FROM_CTX(ctx);
++	if (bpfhv_netmap_kring_on(txq->bi, NR_TX, txq->idx)) {
++		return 0;
++	}
++#endif
+ 	if (skb->ip_summed == CHECKSUM_PARTIAL) {
+ 		*csum_start = skb_checksum_start_offset(skb);
+ 		*csum_offset = skb->csum_offset;
+@@ -822,6 +857,12 @@ BPF_CALL_3(bpf_hv_pkt_l4_csum_md_set, struct bpfhv_rx_context *, ctx,
+ 	   uint16_t, csum_start, uint16_t, csum_offset)
+ {
+ 	struct sk_buff *skb = (struct sk_buff *)(uintptr_t)ctx->packet;
++#ifdef DEV_NETMAP
++	struct bpfhv_rxq *rxq = RXQ_FROM_CTX(ctx);
++	if (bpfhv_netmap_kring_on(rxq->bi, NR_RX, rxq->idx)) {
++		return 0;
++	}
++#endif
+ 
+ 	skb_partial_csum_set(skb, csum_start, csum_offset);
+ 
+@@ -832,6 +873,13 @@ BPF_CALL_2(bpf_hv_pkt_virtio_net_md_get, struct bpfhv_tx_context *, ctx,
+ 	   struct virtio_net_hdr *, hdr)
+ {
+ 	struct sk_buff *skb = (struct sk_buff *)(uintptr_t)ctx->packet;
++#ifdef DEV_NETMAP
++	struct bpfhv_txq *txq = TXQ_FROM_CTX(ctx);
++	if (bpfhv_netmap_kring_on(txq->bi, NR_TX, txq->idx)) {
++		memset(hdr, 0, sizeof(*hdr));
++		return 0;
++	}
++#endif
+ 
+ 	virtio_net_hdr_from_skb(skb, hdr, /*little_endian=*/true,
+ 				/*has_data_valid=*/false, /*vlan_hlen=*/0);
+@@ -843,6 +891,12 @@ BPF_CALL_2(bpf_hv_pkt_virtio_net_md_set, struct bpfhv_rx_context *, ctx,
+ 	   const struct virtio_net_hdr *, hdr)
+ {
+ 	struct sk_buff *skb = (struct sk_buff *)(uintptr_t)ctx->packet;
++#ifdef DEV_NETMAP
++	struct bpfhv_rxq *rxq = RXQ_FROM_CTX(ctx);
++	if (bpfhv_netmap_kring_on(rxq->bi, NR_RX, rxq->idx)) {
++		return 0;
++	}
++#endif
+ 
+ 	virtio_net_hdr_to_skb(skb, hdr, /*little_endian=*/true);
+ 
+@@ -1376,6 +1430,11 @@ bpfhv_resources_alloc(struct bpfhv_info *bi)
  	for (i = 0; i < bi->num_rx_queues; i++) {
  		struct bpfhv_rxq *rxq = bi->rxqs + i;
  
@@ -90,45 +142,44 @@ index c69c2c4..77cd994 100644
  		ret = bpfhv_rx_refill(rxq, GFP_KERNEL);
  		if (ret) {
  			return ret;
-@@ -1410,6 +1448,12 @@ bpfhv_close(struct net_device *netdev)
+@@ -1410,6 +1469,11 @@ bpfhv_close(struct net_device *netdev)
  		/* The BPFHV_CTRL_TX_DISABLE command above may have
  		 * triggered synchronous transmission of some pending
  		 * buffers. Clean up just in case. */
 +#ifdef DEV_NETMAP
-+		if (nm_native_on(NA(netdev)) &&
-+			NA(netdev)->tx_rings[i]->nr_mode == NKR_NETMAP_ON) {
++		if (bpfhv_netmap_kring_on(bi, NR_TX, i)) {
 +			continue;
 +		}
 +#endif
  		bpfhv_tx_clean(txq, /*in_napi=*/false);
  	}
  
-@@ -1429,6 +1473,12 @@ bpfhv_close(struct net_device *netdev)
+@@ -1429,6 +1493,11 @@ bpfhv_close(struct net_device *netdev)
  		/* There may still be pending receive buffers,
  		 * since we stopped NAPI from rescheduling.
  		 * Process them if any. */
 +#ifdef DEV_NETMAP
-+		if (nm_native_on(NA(netdev)) &&
-+			NA(netdev)->rx_rings[i]->nr_mode == NKR_NETMAP_ON) {
++		if (bpfhv_netmap_kring_on(bi, NR_RX, i)) {
 +			continue;
 +		}
 +#endif
  		bpfhv_rx_clean(rxq, bi->rx_bufs);
  	}
  
-@@ -1449,6 +1499,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
+@@ -1449,7 +1518,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
  	for (i = 0; i < bi->num_tx_queues; i++) {
  		struct bpfhv_txq *txq = bi->txqs + i;
  		unsigned int count = 0;
+-
 +#ifdef DEV_NETMAP
 +		if (bpfhv_netmap_txq_detach(bi, i)) {
 +			continue;
 +		}
 +#endif
- 
  		for (;;) {
  			int ret;
-@@ -1486,7 +1541,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
+ 
+@@ -1486,7 +1559,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
  		struct bpfhv_rxq *rxq = bi->rxqs + i;
  		struct bpfhv_rx_context *ctx = rxq->ctx;
  		unsigned int count = 0;
