@@ -35,13 +35,6 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 	unsigned int i;
 	enum txrx t;
 
-	/* Netmap mode is only allowed without offloads. */
-	if (onoff && (bpfhv_hv_features(bi) & ~(BPFHV_F_SG))) {
-		nm_prerr("Cannot enable netmap on %s: offloads enabled",
-			 na->name);
-		return -EIO;
-	}
-
 	if (netif_running(bi->netdev))
 		bpfhv_close(bi->netdev);
 
@@ -49,7 +42,7 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 	if (onoff) {
 		nm_set_native_flags(na);
 		for_rx_tx(t) {
-			/* Hardware rings. */
+			/* Switch mode for hardware rings. */
 			for (i = 0; i < nma_get_nrings(na, t); i++) {
 				struct netmap_kring *kring = NMR(na, t)[i];
 
@@ -61,7 +54,7 @@ bpfhv_netmap_reg(struct netmap_adapter *na, int onoff)
 		}
 	} else {
 		for_rx_tx(t) {
-			/* Hardware rings. */
+			/* Switch mode for hardware rings. */
 			for (i = 0; i < nma_get_nrings(na, t); i++) {
 				struct netmap_kring *kring = NMR(na, t)[i];
 
@@ -294,7 +287,7 @@ bpfhv_netmap_rxsync(struct netmap_kring *kring, int flags)
 		nm_i = nm_next(nm_i, lim);
 	}
 	kring->nr_hwcur = nm_i;
-	if (kick || nm_i == kring->nr_hwtail) {
+	if (kick) {
 		writel(0, rxq->doorbell);
 	}
 
