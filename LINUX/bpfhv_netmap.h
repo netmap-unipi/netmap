@@ -233,7 +233,6 @@ bpfhv_netmap_rxsync(struct netmap_kring *kring, int flags)
 	struct netmap_ring *ring = kring->ring;
 	u_int ring_nr = kring->ring_id;
 	u_int nm_i;	/* index into the netmap ring */
-	u_int n;
 	u_int const lim = kring->nkr_num_slots - 1;
 	u_int const head = kring->rhead;
 	int force_update = (flags & NAF_FORCE_READ) || kring->nr_kflags & NKR_PENDINTR;
@@ -242,13 +241,11 @@ bpfhv_netmap_rxsync(struct netmap_kring *kring, int flags)
 	struct bpfhv_info *bi = netdev_priv(ifp);
 	struct bpfhv_rxq *rxq = bi->rxqs + ring_nr;
 	struct bpfhv_rx_context *ctx = rxq->ctx;
+	bool kick = false;
 
 	if (!netif_carrier_ok(ifp)) {
 		return 0;
 	}
-
-	if (head > lim)
-		return netmap_ring_reinit(kring);
 
 	/*
 	 * First part: import newly received packets.
@@ -290,19 +287,15 @@ bpfhv_netmap_rxsync(struct netmap_kring *kring, int flags)
 	 * Second part: skip past packets that userspace has released.
 	 */
 	nm_i = kring->nr_hwcur;
-	if (nm_i != head) {
-		bool kick = false;
-
-		for (n = 0; nm_i != head; n++) {
-			if (bpfhv_netmap_rxp(na, rxq, ring->slot + nm_i, &kick)) {
-				break;
-			}
-			nm_i = nm_next(nm_i, lim);
+	while (nm_i != head) {
+		if (bpfhv_netmap_rxp(na, rxq, ring->slot + nm_i, &kick)) {
+			break;
 		}
-		kring->nr_hwcur = nm_i;
-		if (kick) {
-			writel(0, rxq->doorbell);
-		}
+		nm_i = nm_next(nm_i, lim);
+	}
+	kring->nr_hwcur = nm_i;
+	if (kick || nm_i == kring->nr_hwtail) {
+		writel(0, rxq->doorbell);
 	}
 
 	return 0;
