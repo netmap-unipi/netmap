@@ -323,7 +323,7 @@ bpfhv_netmap_rxq_attach(struct bpfhv_info *bi, unsigned int r)
 
 	BUG_ON(rxq->rx_free_bufs != bi->rx_bufs);
 
-	for (nm_i = 0; rxq->rx_free_bufs > 0; nm_i++) {
+	for (nm_i = 0; rxq->rx_free_bufs > 1; nm_i++) {
 		bool kick = false;
 
 		if (bpfhv_netmap_rxp(na, rxq, slots + nm_i, &kick)) {
