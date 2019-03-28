@@ -240,9 +240,32 @@ bpfhv_netmap_rxsync(struct netmap_kring *kring, int flags)
 		return 0;
 	}
 
+	/* Disable interrupts. */
+	ctx->min_completed_bufs = 0;
+	BPF_PROG_RUN(bi->progs[BPFHV_PROG_RX_INTRS], ctx);
+
 	/*
-	 * First part: import newly received packets.
+	 * First part: skip past packets that userspace has released.
 	 */
+	nm_i = kring->nr_hwcur;
+	while (nm_i != head) {
+		if (bpfhv_netmap_rxp(na, rxq, ring->slot + nm_i, &kick)) {
+			break;
+		}
+		nm_i = nm_next(nm_i, lim);
+	}
+	kring->nr_hwcur = nm_i;
+	if (kick) {
+		writel(0, rxq->doorbell);
+	}
+
+	/*
+	 * Second part: import newly received packets.
+	 */
+
+	ctx->min_completed_bufs = 1;
+	BPF_PROG_RUN(bi->progs[BPFHV_PROG_RX_INTRS], ctx);
+
 	if (netmap_no_pendintr || force_update) {
 		int ret;
 
@@ -274,21 +297,6 @@ bpfhv_netmap_rxsync(struct netmap_kring *kring, int flags)
 		}
 		kring->nr_hwtail = nm_i;
 		kring->nr_kflags &= ~NKR_PENDINTR;
-	}
-
-	/*
-	 * Second part: skip past packets that userspace has released.
-	 */
-	nm_i = kring->nr_hwcur;
-	while (nm_i != head) {
-		if (bpfhv_netmap_rxp(na, rxq, ring->slot + nm_i, &kick)) {
-			break;
-		}
-		nm_i = nm_next(nm_i, lim);
-	}
-	kring->nr_hwcur = nm_i;
-	if (kick) {
-		writel(0, rxq->doorbell);
 	}
 
 	return 0;
