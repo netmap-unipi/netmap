@@ -123,7 +123,7 @@ $(foreach d,$(filter virtio_net.c,$(E_DRIVERS)),$(eval $(call virtio_net)))
 
 define bpfhv
 bpfhv@fetch	:= test -e @SRCDIR@/ext-drivers/bpfhv || (git clone -b master git@lettieri.iet.unipi.it:vincenzo/bpfhv @SRCDIR@/ext-drivers/bpfhv && rm -rf @SRCDIR@/ext-drivers/bpfhv/.git)
-bpfhv@src	:= cp -r @SRCDIR@/ext-drivers/bpfhv/ bpfhv && bpfhv/configure --noproxy && ( test -L bpfhv/kernel/bpfhv_src.c || (cd bpfhv/kernel/ && ln -s bpfhv bpfhv_src.c ) )
+bpfhv@src	:= cp -r @SRCDIR@/ext-drivers/bpfhv/ bpfhv && bpfhv/configure --noproxy && ( test -L bpfhv/driver/bpfhv_src.c || (cd bpfhv/driver/ && ln -s bpfhv bpfhv_src.c ) )
 bpfhv@patch	:= patches/custom--bpfhv--5.0
 bpfhv@prepare	:=
 bpfhv@build 	:= [ -z "$(EXTRA_CFLAGS)" ] || make -C bpfhv EXTRA_CFLAGS="$(EXTRA_CFLAGS)" @KOPTS@ NETMAP_DRIVER_SUFFIX=@DRVSUFFIX@ KSRC=@KSRC@
