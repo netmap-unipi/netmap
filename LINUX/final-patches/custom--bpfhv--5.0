@@ -1,8 +1,8 @@
 diff --git a/bpfhv/driver/bpfhv.c b/bpfhv/driver/bpfhv.c
-index c69c2c4..40818ea 100644
+index df9c14f..41ef82c 100644
 --- a/bpfhv/driver/bpfhv.c
 +++ b/bpfhv/driver/bpfhv.c
-@@ -196,6 +196,10 @@ static int		bpfhv_set_features(struct net_device *netdev,
+@@ -198,6 +198,10 @@ static int		bpfhv_set_features(struct net_device *netdev,
  static void		bpfhv_get_drvinfo(struct net_device *netdev,
  					  struct ethtool_drvinfo *drvinfo);
  
@@ -13,7 +13,7 @@ index c69c2c4..40818ea 100644
  static const struct net_device_ops bpfhv_netdev_ops = {
  	.ndo_open			= bpfhv_open,
  	.ndo_stop			= bpfhv_close,
-@@ -411,6 +415,10 @@ bpfhv_probe(struct pci_dev *pdev, const struct pci_device_id *id)
+@@ -413,6 +417,10 @@ bpfhv_probe(struct pci_dev *pdev, const struct pci_device_id *id)
  		goto err_irqs;
  	}
  
@@ -24,7 +24,7 @@ index c69c2c4..40818ea 100644
  	return 0;
  
  err_irqs:
-@@ -449,6 +457,9 @@ bpfhv_remove(struct pci_dev *pdev)
+@@ -451,6 +459,9 @@ bpfhv_remove(struct pci_dev *pdev)
  		netif_napi_del(&rxq->napi);
  	}
  	cancel_work_sync(&bi->upgrade_work);
@@ -34,7 +34,7 @@ index c69c2c4..40818ea 100644
  	bpfhv_irqs_teardown(bi);
  	unregister_netdev(netdev);
  	bpfhv_programs_teardown(bi);
-@@ -684,6 +695,13 @@ static irqreturn_t
+@@ -686,6 +697,13 @@ static irqreturn_t
  bpfhv_rx_intr(int irq, void *data)
  {
  	struct bpfhv_rxq *rxq = data;
@@ -48,7 +48,7 @@ index c69c2c4..40818ea 100644
  
  	napi_schedule(&rxq->napi);
  
-@@ -695,6 +713,13 @@ bpfhv_tx_intr(int irq, void *data)
+@@ -697,6 +715,13 @@ bpfhv_tx_intr(int irq, void *data)
  {
  	struct bpfhv_txq *txq = data;
  
@@ -62,7 +62,7 @@ index c69c2c4..40818ea 100644
  	if (tx_napi) {
  		napi_schedule(&txq->napi);
  	} else {
-@@ -719,7 +744,12 @@ BPF_CALL_1(bpf_hv_rx_pkt_alloc, struct bpfhv_rx_context *, ctx)
+@@ -721,7 +746,12 @@ BPF_CALL_1(bpf_hv_rx_pkt_alloc, struct bpfhv_rx_context *, ctx)
  	bool lro = rxq->bi->lro;
  	size_t truesize = lro ? PAGE_SIZE : BPFHV_RX_SKB_TRUESIZE;
  	int i;
@@ -76,7 +76,7 @@ index c69c2c4..40818ea 100644
  	if (unlikely(ctx->num_bufs == 0)) {
  		return -EINVAL;
  	}
-@@ -808,7 +838,12 @@ BPF_CALL_3(bpf_hv_pkt_l4_csum_md_get, struct bpfhv_tx_context *, ctx,
+@@ -810,7 +840,12 @@ BPF_CALL_3(bpf_hv_pkt_l4_csum_md_get, struct bpfhv_tx_context *, ctx,
  	   uint16_t *, csum_start, uint16_t *, csum_offset)
  {
  	struct sk_buff *skb = (struct sk_buff *)(uintptr_t)ctx->packet;
@@ -90,7 +90,7 @@ index c69c2c4..40818ea 100644
  	if (skb->ip_summed == CHECKSUM_PARTIAL) {
  		*csum_start = skb_checksum_start_offset(skb);
  		*csum_offset = skb->csum_offset;
-@@ -822,6 +857,12 @@ BPF_CALL_3(bpf_hv_pkt_l4_csum_md_set, struct bpfhv_rx_context *, ctx,
+@@ -824,6 +859,12 @@ BPF_CALL_3(bpf_hv_pkt_l4_csum_md_set, struct bpfhv_rx_context *, ctx,
  	   uint16_t, csum_start, uint16_t, csum_offset)
  {
  	struct sk_buff *skb = (struct sk_buff *)(uintptr_t)ctx->packet;
@@ -103,7 +103,7 @@ index c69c2c4..40818ea 100644
  
  	skb_partial_csum_set(skb, csum_start, csum_offset);
  
-@@ -832,6 +873,13 @@ BPF_CALL_2(bpf_hv_pkt_virtio_net_md_get, struct bpfhv_tx_context *, ctx,
+@@ -834,6 +875,13 @@ BPF_CALL_2(bpf_hv_pkt_virtio_net_md_get, struct bpfhv_tx_context *, ctx,
  	   struct virtio_net_hdr *, hdr)
  {
  	struct sk_buff *skb = (struct sk_buff *)(uintptr_t)ctx->packet;
@@ -117,7 +117,7 @@ index c69c2c4..40818ea 100644
  
  	virtio_net_hdr_from_skb(skb, hdr, /*little_endian=*/true,
  				/*has_data_valid=*/false, /*vlan_hlen=*/0);
-@@ -843,6 +891,12 @@ BPF_CALL_2(bpf_hv_pkt_virtio_net_md_set, struct bpfhv_rx_context *, ctx,
+@@ -845,6 +893,12 @@ BPF_CALL_2(bpf_hv_pkt_virtio_net_md_set, struct bpfhv_rx_context *, ctx,
  	   const struct virtio_net_hdr *, hdr)
  {
  	struct sk_buff *skb = (struct sk_buff *)(uintptr_t)ctx->packet;
@@ -130,7 +130,7 @@ index c69c2c4..40818ea 100644
  
  	virtio_net_hdr_to_skb(skb, hdr, /*little_endian=*/true);
  
-@@ -1376,6 +1430,11 @@ bpfhv_resources_alloc(struct bpfhv_info *bi)
+@@ -1394,6 +1448,11 @@ bpfhv_resources_alloc(struct bpfhv_info *bi)
  	for (i = 0; i < bi->num_rx_queues; i++) {
  		struct bpfhv_rxq *rxq = bi->rxqs + i;
  
@@ -142,7 +142,7 @@ index c69c2c4..40818ea 100644
  		ret = bpfhv_rx_refill(rxq, GFP_KERNEL);
  		if (ret) {
  			return ret;
-@@ -1410,6 +1469,11 @@ bpfhv_close(struct net_device *netdev)
+@@ -1434,6 +1493,11 @@ bpfhv_close_carrier(struct net_device *netdev, bool carrier_off)
  		/* The BPFHV_CTRL_TX_DISABLE command above may have
  		 * triggered synchronous transmission of some pending
  		 * buffers. Clean up just in case. */
@@ -154,7 +154,7 @@ index c69c2c4..40818ea 100644
  		bpfhv_tx_clean(txq, /*in_napi=*/false);
  	}
  
-@@ -1429,6 +1493,11 @@ bpfhv_close(struct net_device *netdev)
+@@ -1455,6 +1519,11 @@ bpfhv_close_carrier(struct net_device *netdev, bool carrier_off)
  		/* There may still be pending receive buffers,
  		 * since we stopped NAPI from rescheduling.
  		 * Process them if any. */
@@ -166,7 +166,7 @@ index c69c2c4..40818ea 100644
  		bpfhv_rx_clean(rxq, bi->rx_bufs);
  	}
  
-@@ -1449,7 +1518,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
+@@ -1479,7 +1548,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
  	for (i = 0; i < bi->num_tx_queues; i++) {
  		struct bpfhv_txq *txq = bi->txqs + i;
  		unsigned int count = 0;
@@ -179,7 +179,7 @@ index c69c2c4..40818ea 100644
  		for (;;) {
  			int ret;
  
-@@ -1486,7 +1559,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
+@@ -1516,7 +1589,11 @@ bpfhv_resources_dealloc(struct bpfhv_info *bi)
  		struct bpfhv_rxq *rxq = bi->rxqs + i;
  		struct bpfhv_rx_context *ctx = rxq->ctx;
  		unsigned int count = 0;
